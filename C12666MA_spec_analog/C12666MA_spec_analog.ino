@@ -99,7 +99,7 @@ const int CLK_DELAY_US = 1;
 // Datasheet-specified minimum integration time for the C12666MA is about
 // 1.28 ms. We enforce this floor in set_integration() so a mistaken
 // set_integration,0 command can't silently produce underexposed frames.
-const unsigned long MIN_INTEGRATION_US = 1280UL;
+const unsigned long MIN_INTEGRATION_US = 5000UL;
 
 // Averaging is capped so the uint16 accumulator (in g_data) cannot overflow:
 // 63 * 1023 = 64449, which is below 65535. This also keeps us inside the

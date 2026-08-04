@@ -1,2 +1,5 @@
 .Old/
-workdir/data/
+workdir/.data/
+.data/
+.csv
+.xlsx
