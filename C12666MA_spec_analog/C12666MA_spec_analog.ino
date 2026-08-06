@@ -82,6 +82,8 @@ const uint8_t SPEC_CLK   = A2;   // clock output to the sensor
 const uint8_t SPEC_ST    = A1;   // start pulse output to the sensor
 const uint8_t SPEC_VIDEO = A3;   // analog video input from the sensor
 const uint8_t SPEC_GAIN  = A0;   // gain select output to the sensor (pin 9)
+const uint8_t LED_PIN    = 2;    // external status LED (pin 0/1 are used by
+                                  // Serial - don't repurpose those)
 
 // Gain pin logic levels (see GAIN PIN note above).
 const uint8_t GAIN_LOW  = HIGH;  // low gain:  pin at/near Vdd
@@ -134,6 +136,8 @@ Config g_cfg;   // the live copy of our settings
 uint16_t g_data[SPEC_CHANNELS];   // latest frame; also used as the average sum
 uint16_t g_dark[SPEC_CHANNELS];   // dark reference frame
 bool     g_have_dark = false;     // true once a dark frame has been captured
+bool     g_led_on = false;        // current LED state (not persisted in EEPROM -
+                                   // always starts off after a reboot)
 
 // ============================================================================
 //  4. SERIAL COMMAND BUFFER
@@ -338,6 +342,8 @@ void printWlCoeffs() {
 //    get_integration           -> <n>
 //    set_gain,<0|1>            -> {"high_gain":<0|1>}     (0=low, 1=high)
 //    get_gain                  -> <0|1>
+//    set_led,<0|1>             -> {"led":<0|1>}          (0=off, 1=on)
+//    get_led                   -> <0|1>
 //    dark                      -> {"dark":"ok"}          (capture dark frame)
 //    clear_dark                -> {"dark":"cleared"}
 //    set_avg,<n>               -> {"n_avg":<n>}          (1..63)
@@ -395,6 +401,20 @@ void handleCommand(char *cmd) {
 
   } else if (strcmp(tok, "get_gain") == 0) {
     Serial.print(g_cfg.high_gain);
+    Serial.print(F("\r\n"));
+
+  } else if (strcmp(tok, "set_led") == 0) {
+    char *arg = strtok(NULL, ",");
+    if (arg != NULL) {
+      g_led_on = (atoi(arg) != 0);
+      digitalWrite(LED_PIN, g_led_on ? HIGH : LOW);
+    }
+    Serial.print(F("{\"led\":"));
+    Serial.print(g_led_on);
+    Serial.print(F("}\r\n"));
+
+  } else if (strcmp(tok, "get_led") == 0) {
+    Serial.print(g_led_on);
     Serial.print(F("\r\n"));
 
   } else if (strcmp(tok, "dark") == 0) {
@@ -470,8 +490,10 @@ void setup() {
   pinMode(SPEC_CLK,  OUTPUT);
   pinMode(SPEC_ST,   OUTPUT);
   pinMode(SPEC_GAIN, OUTPUT);
+  pinMode(LED_PIN,   OUTPUT);
   digitalWrite(SPEC_CLK, LOW);
   digitalWrite(SPEC_ST,  HIGH);   // ST idles HIGH on the C12666MA, not LOW
+  digitalWrite(LED_PIN,  LOW);    // start with the LED off
   // SPEC_VIDEO is an analog input and needs no pinMode().
 
   analogReference(DEFAULT);   // 5 V ADC reference (matches the VIDEO range)
