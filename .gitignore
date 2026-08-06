@@ -1,5 +1,3 @@
 .Old/
-workdir/.data/
-.data/
-.csv
-.xlsx
+data/*
+.First try VSCode
