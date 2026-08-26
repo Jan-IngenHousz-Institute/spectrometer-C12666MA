@@ -5,9 +5,11 @@
 	(uuid "81531308-61af-4f59-a14f-8eee88cccc1e")
 	(paper "A4")
 	(title_block
-		(title "C12666Board v2")
+		(title "C12666MA Board v2")
 		(date "2026-08-26")
 		(rev "1")
+		(company "Jan Ingenhousz Institute")
+		(comment 1 "KT")
 	)
 	(lib_symbols
 		(symbol "Analog_ADC:MCP3301"
@@ -1492,208 +1494,6 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Library JII:MCP1541-I_TO"
-			(pin_names
-				(offset 0.254)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "U"
-				(at 27.94 10.16 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.524 1.524)
-					)
-				)
-			)
-			(property "Value" "MCP1541-I/TO"
-				(at 27.94 7.62 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.524 1.524)
-					)
-				)
-			)
-			(property "Footprint" "TO-92_MC_MCH"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-						(italic yes)
-					)
-				)
-			)
-			(property "Datasheet" "MCP1541-I/TO"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-						(italic yes)
-					)
-				)
-			)
-			(property "Description" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_locked" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "MCP1541-I/TO"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_fp_filters" "TO-92_MC_MCH"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "MCP1541-I_TO_0_1"
-				(polyline
-					(pts
-						(xy 7.62 5.08) (xy 7.62 -7.62)
-					)
-					(stroke
-						(width 0.127)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 7.62 -7.62) (xy 48.26 -7.62)
-					)
-					(stroke
-						(width 0.127)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 48.26 5.08) (xy 7.62 5.08)
-					)
-					(stroke
-						(width 0.127)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 48.26 -7.62) (xy 48.26 5.08)
-					)
-					(stroke
-						(width 0.127)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(pin unspecified line
-					(at 0 0 0)
-					(length 7.62)
-					(name "VSS"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin unspecified line
-					(at 55.88 -2.54 180)
-					(length 7.62)
-					(name "VOUT"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin unspecified line
-					(at 55.88 0 180)
-					(length 7.62)
-					(name "VIN"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
 		(symbol "Library JII:SN74AHCT125N"
 			(pin_names
 				(offset 0.254)
@@ -2087,6 +1887,200 @@
 						(effects
 							(font
 								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "MCP1541-I_TO_1"
+			(pin_names
+				(offset 1.016)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "U"
+				(at -4.5282 6.2835 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left bottom)
+				)
+			)
+			(property "Value" "MCP1541-I_TO"
+				(at -4.4982 -13.3166 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left bottom)
+				)
+			)
+			(property "Footprint" "MCP1541-I_TO:TO127P254X495-3"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify bottom)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "SUPPLIER" "Microchip"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify bottom)
+				)
+			)
+			(property "MPN" "MCP1541-I/TO"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify bottom)
+				)
+			)
+			(property "OC_NEWARK" "96K3704"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify bottom)
+				)
+			)
+			(property "OC_FARNELL" "1331478"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify bottom)
+				)
+			)
+			(property "PACKAGE" "TO-92"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify bottom)
+				)
+			)
+			(symbol "MCP1541-I_TO_1_0_0"
+				(rectangle
+					(start -12.7 -10.16)
+					(end 12.7 5.08)
+					(stroke
+						(width 0.4064)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin passive line
+					(at -17.78 -5.08 0)
+					(length 5.08)
+					(name "VSS"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 17.78 -2.54 180)
+					(length 5.08)
+					(name "VOUT"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -17.78 -2.54 0)
+					(length 5.08)
+					(name "VIN"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.016 1.016)
 							)
 						)
 					)
@@ -3666,12 +3660,6 @@
 		)
 	)
 	(junction
-		(at 139.7 123.19)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "125cbe8d-f694-4ea6-81cf-c5c4e887f794")
-	)
-	(junction
 		(at 259.08 115.57)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3688,6 +3676,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "19e721c5-8dfd-40e2-8740-b3ec8198190e")
+	)
+	(junction
+		(at 90.17 133.35)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "309a770f-6c53-4951-9e5b-eb283c5e7ff6")
 	)
 	(junction
 		(at 113.03 165.1)
@@ -3738,12 +3732,6 @@
 		(uuid "7702bb99-14d7-4a50-baa9-add1d592ed7f")
 	)
 	(junction
-		(at 129.54 143.51)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "aa1ede44-5f6a-4741-94dc-058fc73b4e20")
-	)
-	(junction
 		(at 153.67 44.45)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3772,6 +3760,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "db8c7935-6d18-4371-8f17-8dc0c8bd946f")
+	)
+	(junction
+		(at 129.54 143.51)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "f5e104bc-0feb-483b-8be7-c29ac408f3ae")
 	)
 	(junction
 		(at 95.25 185.42)
@@ -3861,16 +3855,6 @@
 	)
 	(wire
 		(pts
-			(xy 129.54 130.81) (xy 139.7 130.81)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "1da9964b-cced-40d5-b08a-dde67753d66f")
-	)
-	(wire
-		(pts
 			(xy 242.57 99.06) (xy 248.92 99.06)
 		)
 		(stroke
@@ -3931,7 +3915,7 @@
 	)
 	(wire
 		(pts
-			(xy 139.7 115.57) (xy 139.7 123.19)
+			(xy 90.17 125.73) (xy 90.17 133.35)
 		)
 		(stroke
 			(width 0)
@@ -4211,13 +4195,13 @@
 	)
 	(wire
 		(pts
-			(xy 139.7 123.19) (xy 139.7 130.81)
+			(xy 90.17 133.35) (xy 93.98 133.35)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "6a6fe0e7-143c-4c8a-bbac-fb70f22f8fed")
+		(uuid "684cbb0f-ad45-408b-8471-9c1164c4e498")
 	)
 	(wire
 		(pts
@@ -4281,7 +4265,7 @@
 	)
 	(wire
 		(pts
-			(xy 132.08 113.03) (xy 127 113.03)
+			(xy 82.55 123.19) (xy 77.47 123.19)
 		)
 		(stroke
 			(width 0)
@@ -4311,7 +4295,7 @@
 	)
 	(wire
 		(pts
-			(xy 132.08 123.19) (xy 139.7 123.19)
+			(xy 82.55 133.35) (xy 90.17 133.35)
 		)
 		(stroke
 			(width 0)
@@ -4351,7 +4335,7 @@
 	)
 	(wire
 		(pts
-			(xy 132.08 115.57) (xy 132.08 113.03)
+			(xy 82.55 125.73) (xy 82.55 123.19)
 		)
 		(stroke
 			(width 0)
@@ -4531,6 +4515,16 @@
 	)
 	(wire
 		(pts
+			(xy 85.09 135.89) (xy 85.09 138.43)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b17dbe74-cafd-489f-a34a-fc8eba15ec81")
+	)
+	(wire
+		(pts
 			(xy 154.94 115.57) (xy 154.94 172.72)
 		)
 		(stroke
@@ -4548,16 +4542,6 @@
 			(type default)
 		)
 		(uuid "b6be24c4-cc84-43a1-bae3-cea76aa00d58")
-	)
-	(wire
-		(pts
-			(xy 73.66 130.81) (xy 73.66 138.43)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "b9389e48-b0f1-4a34-b80f-f95b3d95551a")
 	)
 	(wire
 		(pts
@@ -4848,6 +4832,16 @@
 			(type default)
 		)
 		(uuid "f2a2b1cb-4908-44e9-a598-b991c25ae5b8")
+	)
+	(wire
+		(pts
+			(xy 93.98 135.89) (xy 85.09 135.89)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f3c89d4b-6498-4114-874c-be50e669cb01")
 	)
 	(wire
 		(pts
@@ -5243,7 +5237,7 @@
 	)
 	(symbol
 		(lib_id "power:+5V")
-		(at 139.7 115.57 0)
+		(at 90.17 125.73 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -5254,7 +5248,7 @@
 		(fields_autoplaced yes)
 		(uuid "0a1dd353-d5ec-4248-8015-d2258e9ca19a")
 		(property "Reference" "#PWR07"
-			(at 139.7 119.38 0)
+			(at 90.17 129.54 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5265,7 +5259,7 @@
 			)
 		)
 		(property "Value" "+5V"
-			(at 139.7 110.49 0)
+			(at 90.17 120.65 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -5275,7 +5269,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 139.7 115.57 0)
+			(at 90.17 125.73 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5286,7 +5280,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 139.7 115.57 0)
+			(at 90.17 125.73 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5297,7 +5291,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 139.7 115.57 0)
+			(at 90.17 125.73 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5867,91 +5861,6 @@
 			(project "Raspberry pico board"
 				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
 					(reference "C4")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Library JII:MCP1541-I_TO")
-		(at 73.66 130.81 0)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "457c3244-747b-4e76-a85d-69e5eb3bc162")
-		(property "Reference" "U7"
-			(at 101.6 120.65 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-			)
-		)
-		(property "Value" "MCP1541-I/TO"
-			(at 101.6 123.19 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.524 1.524)
-				)
-			)
-		)
-		(property "Footprint" "Library JII FP:MCP1541_I_TO"
-			(at 73.66 130.81 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-					(italic yes)
-				)
-			)
-		)
-		(property "Datasheet" "MCP1541-I/TO"
-			(at 73.66 130.81 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-					(italic yes)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 73.66 130.81 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "3"
-			(uuid "a6f7b06f-38e8-43ca-ad3b-ddf10991f005")
-		)
-		(pin "1"
-			(uuid "42f4d22e-db67-425e-ae0d-532fdada3f70")
-		)
-		(pin "2"
-			(uuid "8daf4f70-2f14-455b-8107-f90e6853e589")
-		)
-		(instances
-			(project "Raspberry pico board"
-				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
-					(reference "U7")
 					(unit 1)
 				)
 			)
@@ -6568,7 +6477,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 132.08 119.38 0)
+		(at 82.55 129.54 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -6578,7 +6487,7 @@
 		(dnp no)
 		(uuid "9369313a-2132-4584-a5d6-14d6d33f42b5")
 		(property "Reference" "C3"
-			(at 133.096 117.094 0)
+			(at 83.566 127.254 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6589,7 +6498,7 @@
 			)
 		)
 		(property "Value" "0.1 μF"
-			(at 132.842 121.92 0)
+			(at 83.312 132.08 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6600,7 +6509,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 133.0452 123.19 0)
+			(at 83.5152 133.35 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6611,7 +6520,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 132.08 119.38 0)
+			(at 82.55 129.54 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6622,7 +6531,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 132.08 119.38 0)
+			(at 82.55 129.54 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6720,6 +6629,151 @@
 			(project "Raspberry pico board"
 				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
 					(reference "#PWR013")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_name "MCP1541-I_TO_1")
+		(lib_id "Library JII:MCP1541-I_TO")
+		(at 111.76 130.81 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "9748fafb-b9f0-469f-b48f-c28ce6876c57")
+		(property "Reference" "U1"
+			(at 111.76 120.65 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "MCP1541-I_TO"
+			(at 111.76 123.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "MCP1541-I_TO:TO127P254X495-3"
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify bottom)
+			)
+		)
+		(property "Datasheet" ""
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "SUPPLIER" "Microchip"
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify bottom)
+			)
+		)
+		(property "MPN" "MCP1541-I/TO"
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify bottom)
+			)
+		)
+		(property "OC_NEWARK" "96K3704"
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify bottom)
+			)
+		)
+		(property "OC_FARNELL" "1331478"
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify bottom)
+			)
+		)
+		(property "PACKAGE" "TO-92"
+			(at 111.76 130.81 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify bottom)
+			)
+		)
+		(pin "2"
+			(uuid "94ae089f-33fb-41f3-a862-dbe691db3730")
+		)
+		(pin "3"
+			(uuid "4e16039a-1882-4bd5-b742-85ba2b619ebc")
+		)
+		(pin "1"
+			(uuid "e61fd353-6832-48c8-b4aa-69ac6129a32c")
+		)
+		(instances
+			(project "Raspberry pico board"
+				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
+					(reference "U1")
 					(unit 1)
 				)
 			)
@@ -7318,7 +7372,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 73.66 138.43 0)
+		(at 85.09 138.43 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -7329,7 +7383,7 @@
 		(fields_autoplaced yes)
 		(uuid "cce7306f-2b70-4adb-9319-18fb00bc2b42")
 		(property "Reference" "#PWR015"
-			(at 73.66 144.78 0)
+			(at 85.09 144.78 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7340,7 +7394,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 73.66 143.51 0)
+			(at 85.09 143.51 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -7350,7 +7404,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 73.66 138.43 0)
+			(at 85.09 138.43 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7361,7 +7415,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 73.66 138.43 0)
+			(at 85.09 138.43 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7372,7 +7426,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 73.66 138.43 0)
+			(at 85.09 138.43 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7582,7 +7636,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 127 113.03 0)
+		(at 77.47 123.19 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -7593,7 +7647,7 @@
 		(fields_autoplaced yes)
 		(uuid "d0d2d607-5600-4d81-95b7-84e52893bfda")
 		(property "Reference" "#PWR011"
-			(at 127 119.38 0)
+			(at 77.47 129.54 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7604,7 +7658,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 127 118.11 0)
+			(at 77.47 128.27 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -7614,7 +7668,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 127 113.03 0)
+			(at 77.47 123.19 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7625,7 +7679,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 127 113.03 0)
+			(at 77.47 123.19 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7636,7 +7690,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 127 113.03 0)
+			(at 77.47 123.19 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
