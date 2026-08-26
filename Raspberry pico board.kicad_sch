@@ -5,7 +5,9 @@
 	(uuid "81531308-61af-4f59-a14f-8eee88cccc1e")
 	(paper "A4")
 	(title_block
-		(date "2026-08-12")
+		(title "C12666Board v2")
+		(date "2026-08-26")
+		(rev "1")
 	)
 	(lib_symbols
 		(symbol "Analog_ADC:MCP3301"
