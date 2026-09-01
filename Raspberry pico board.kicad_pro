@@ -212,12 +212,12 @@
       "track_widths": [
         0.0,
         0.0,
-        0.0127,
-        0.01905,
-        0.0254,
-        0.0508,
-        0.127,
-        0.1778
+        0.1,
+        0.2,
+        0.3,
+        0.5,
+        1.0,
+        2.0
       ],
       "tuning_pattern_settings": {
         "diff_pair_defaults": {
@@ -264,7 +264,7 @@
       "internal_id": "",
       "mfg": "",
       "mpn": "",
-      "sch_revision": ""
+      "sch_revision": "1"
     },
     "layer_pairs": [
       {
