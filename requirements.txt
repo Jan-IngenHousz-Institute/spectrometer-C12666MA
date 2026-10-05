@@ -1,0 +1,10 @@
+numpy
+pyserial
+PySide6
+pyqtgraph
+# optional: reading recordings, notebooks, tests, re-fitting the calibration
+pandas
+pytest
+matplotlib
+openpyxl
+mpremote
