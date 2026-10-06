@@ -288,7 +288,9 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll.setMinimumWidth(330)
 
         # plots
-        pg.setConfigOptions(antialias=True)
+        # No antialiasing: with PyQt5 it made Qt hold the Python lock for up to
+        # ~200 ms per redraw, starving the serial reader thread at high rates.
+        pg.setConfigOptions(antialias=False)
         self.spec_plot = pg.PlotWidget(title="Spectrum")
         self.spec_plot.setLabel("bottom", "Wavelength", units="nm")
         self.spec_plot.setLabel("left", "Counts")
@@ -380,18 +382,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 "sat_low_spin", "dark_n_spin", "window_spin"]
 
     def _load_settings(self) -> None:
+        # QSettings returns strings or numbers depending on platform and Qt
+        # binding, and PyQt is strict about int vs float: convert explicitly
+        # and ignore anything unreadable rather than refusing to start.
         for name in self._PERSIST:
-            value = self.settings.value(name)
-            if value is not None:
-                getattr(self, name).setValue(float(value))
+            box = getattr(self, name)
+            try:
+                value = float(self.settings.value(name))
+                box.setValue(int(round(value)) if isinstance(box, QtWidgets.QSpinBox) else value)
+            except (TypeError, ValueError):
+                pass
         for name in ("folder_edit", "prefix_edit"):
             value = self.settings.value(name)
             if value:
                 getattr(self, name).setText(str(value))
-        self.save_yield_check.setChecked(self.settings.value("save_yield", "true") == "true")
-        self.fastest_check.setChecked(self.settings.value("fastest", "true") == "true")
+        self.save_yield_check.setChecked(str(self.settings.value("save_yield", "true")) == "true")
+        self.fastest_check.setChecked(str(self.settings.value("fastest", "true")) == "true")
         geometry = self.settings.value("geometry")
-        if geometry is not None:
+        if isinstance(geometry, QtCore.QByteArray):
             self.restoreGeometry(geometry)
 
     def _save_settings(self) -> None:
@@ -790,7 +798,21 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.warning(self, "C12666MA", text)
 
 
+def configure_qt() -> None:
+    """Call before creating the QApplication. Qt5 does not scale for high-DPI
+    displays by default; with Windows display scaling (e.g. 125 %) pyqtgraph
+    then draws the axis tick labels at the wrong positions. Qt6 always scales."""
+    if pg.Qt.QT_LIB in ("PyQt5", "PySide2"):
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+        if hasattr(QtGui.QGuiApplication, "setHighDpiScaleFactorRoundingPolicy"):
+            QtGui.QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+                QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+
+
 def main() -> None:
+    if QtWidgets.QApplication.instance() is None:
+        configure_qt()
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     win = MainWindow()
     win.resize(1400, 900)
