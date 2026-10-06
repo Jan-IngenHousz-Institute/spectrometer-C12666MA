@@ -32,7 +32,10 @@ python -m c12666ma            # the GUI
    averages, and the GUI tells you when the current one no longer matches.
 3. Drag the blue (`incident_light`) and red (`fluorescence`) regions, or type
    their limits.
-4. **Start recording** writes one CSV per measurement.
+4. Select **3D spectrum history** to view the most recent spectra as a surface
+   over wavelength, time and counts. The view keeps up to 5000 spectra in
+   memory, can show the latest 2–500, and updates while it is open.
+5. **Start recording** writes one CSV per measurement.
 
 ### Rel. fluo. yield
 

@@ -19,6 +19,9 @@ from typing import Optional
 
 import numpy as np
 import pyqtgraph as pg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+from mpl_toolkits.mplot3d import Axes3D
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from . import __version__
@@ -28,6 +31,7 @@ from .calibration import WavelengthCalibration
 from .device import DeviceError, Spectrometer, find_ports
 from .protocol import FLAG_LED_CHANGED, Frame
 from .recorder import Recorder
+
 
 INCIDENT_COLOR = (70, 140, 255)
 FLUO_COLOR = (230, 60, 60)
@@ -150,6 +154,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.yield_series = GrowingSeries()
         self.warn_series = GrowingSeries()
         self.sat_series = GrowingSeries()
+        self.spectrum_history: collections.deque[tuple[float, Frame]] = collections.deque(
+            maxlen=5000)
+        self._spectrum_t0_device: Optional[int] = None
+        self._last_3d_update = 0.0
         self.t0_device: Optional[int] = None
         self.last_frame: Optional[Frame] = None
         self.fps = 0.0
@@ -346,9 +354,35 @@ class MainWindow(QtWidgets.QMainWindow):
         split.addWidget(bottom)
         split.setSizes([500, 350])
 
+        self.plot_tabs = QtWidgets.QTabWidget()
+        self.plot_tabs.addTab(split, "Live plots")
+        plot_3d = QtWidgets.QWidget()
+        plot_3d_layout = QtWidgets.QVBoxLayout(plot_3d)
+        plot_3d_tools = QtWidgets.QHBoxLayout()
+        plot_3d_tools.addWidget(QtWidgets.QLabel("Show last"))
+        self.spectrum_count_spin = QtWidgets.QSpinBox()
+        self.spectrum_count_spin.setRange(2, 500)
+        self.spectrum_count_spin.setValue(100)
+        plot_3d_tools.addWidget(self.spectrum_count_spin)
+        plot_3d_tools.addWidget(QtWidgets.QLabel("spectra"))
+        self.refresh_3d_btn = QtWidgets.QPushButton("Refresh 3D")
+        self.refresh_3d_btn.clicked.connect(self._update_3d_plot)
+        plot_3d_tools.addWidget(self.refresh_3d_btn)
+        self.auto_3d_check = QtWidgets.QCheckBox("Update while viewing")
+        self.auto_3d_check.setChecked(True)
+        plot_3d_tools.addWidget(self.auto_3d_check)
+        plot_3d_tools.addStretch(1)
+        plot_3d_layout.addLayout(plot_3d_tools)
+        self.figure_3d = Figure()
+        self.canvas_3d = FigureCanvasQTAgg(self.figure_3d)
+        self.axes_3d = self.figure_3d.add_subplot(111, projection="3d")
+        self.canvas_3d.setMinimumSize(500, 400)
+        plot_3d_layout.addWidget(self.canvas_3d)
+        self.plot_tabs.addTab(plot_3d, "3D spectrum history")
+
         main = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         main.addWidget(scroll)
-        main.addWidget(split)
+        main.addWidget(self.plot_tabs)
         main.setSizes([340, 1000])
         self.setCentralWidget(main)
 
@@ -375,6 +409,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inc_region.sigRegionChangeFinished.connect(self._region_dragged)
         self.flu_region.sigRegionChangeFinished.connect(self._region_dragged)
         self.record_btn.toggled.connect(self.toggle_recording)
+        self.plot_tabs.currentChanged.connect(self._plot_tab_changed)
+        self.spectrum_count_spin.valueChanged.connect(self._refresh_3d_if_visible)
         self._set_connected(False)
 
     # ------------------------------------------------------------ settings
@@ -559,6 +595,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.start_btn.setChecked(False)
                 return
             self.t0_device = None
+            self.spectrum_history.clear()
+            self._spectrum_t0_device = None
+            self._last_3d_update = 0.0
             self.start_btn.setText("Stop")
         else:
             self.record_btn.setChecked(False)
@@ -695,6 +734,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.t0_device is None:
                 self.t0_device = frame.t_device_us
             t = (frame.t_device_us - self.t0_device) / 1e6
+            if self._spectrum_t0_device is None:
+                self._spectrum_t0_device = frame.t_device_us
+            spectrum_time = (frame.t_device_us - self._spectrum_t0_device) / 1e6
+            self.spectrum_history.append((spectrum_time, frame))
             self.yield_series.append(t, res.value)
             if res.warning:
                 self.warn_series.append(t, 0.0)
@@ -728,7 +771,56 @@ class MainWindow(QtWidgets.QMainWindow):
                     text += f" · yield {res.value:.4f}"
             self.value_label.setText(text)
             self._update_yield_plot()
+        if (latest is not None and self.plot_tabs.currentIndex() == 1
+                and self.auto_3d_check.isChecked()
+                and now - self._last_3d_update >= 1.0):
+            self._update_3d_plot()
         self._update_status(now)
+
+    def _plot_tab_changed(self, index: int) -> None:
+        if index == 1:
+            self._update_3d_plot()
+
+    def _refresh_3d_if_visible(self) -> None:
+        if self.plot_tabs.currentIndex() == 1:
+            self._update_3d_plot()
+
+    def _update_3d_plot(self) -> None:
+        count = self.spectrum_count_spin.value()
+        history = list(self.spectrum_history)[-count:]
+        self.figure_3d.clear()
+        self.axes_3d = self.figure_3d.add_subplot(111, projection="3d")
+        if len(history) < 2:
+            self.axes_3d.text2D(
+                0.5, 0.5, "Collect at least two spectra to plot a 3D surface",
+                transform=self.axes_3d.transAxes, ha="center", va="center")
+            self.axes_3d.set_axis_off()
+        else:
+            times = np.asarray([t for t, _ in history])
+            wavelengths = self.engine.wavelengths
+            dark = self.engine.dark
+            subtract = self.subtract_check.isChecked()
+            spectra = np.asarray([
+                frame.counts - dark.mean
+                if subtract and dark is not None and dark.matches(frame)
+                else frame.counts
+                for _, frame in history
+            ])
+            wavelength_grid, time_grid = np.meshgrid(wavelengths, times)
+            surface = self.axes_3d.plot_surface(
+                wavelength_grid, time_grid, spectra, cmap="viridis",
+                linewidth=0, antialiased=False,
+                rstride=max(1, len(history) // 100), cstride=2)
+            self.axes_3d.set_xlabel("Wavelength (nm)")
+            self.axes_3d.set_ylabel("Time (s)")
+            self.axes_3d.set_zlabel(
+                "Counts (dark-subtracted where matched)" if subtract else "Counts")
+            self.axes_3d.set_title(f"Most recent {len(history)} spectra")
+            self.figure_3d.colorbar(surface, ax=self.axes_3d, shrink=0.65,
+                                    pad=0.12, label="Counts")
+        self.figure_3d.tight_layout()
+        self.canvas_3d.draw_idle()
+        self._last_3d_update = time.monotonic()
 
     def _update_yield_plot(self) -> None:
         window = self.window_spin.value()
