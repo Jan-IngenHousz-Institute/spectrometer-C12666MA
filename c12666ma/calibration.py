@@ -26,6 +26,15 @@ class WavelengthCalibration:
     def calibrated(self) -> bool:
         return self.source != "uncalibrated"
 
+    def same_as(self, coeffs) -> bool:
+        """True if `coeffs` are these coefficients, allowing for the device
+        storing them as 32-bit floats."""
+        a = np.zeros(6)
+        b = np.zeros(6)
+        a[:len(self.coefficients)] = self.coefficients
+        b[:len(coeffs or [])] = coeffs or []
+        return bool(np.allclose(a, b, rtol=1e-5, atol=1e-12))
+
     @classmethod
     def from_file(cls, path: Path = DEFAULT_FILE) -> "WavelengthCalibration":
         data = json.loads(Path(path).read_text())

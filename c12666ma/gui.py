@@ -24,7 +24,7 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from . import __version__
 from .analysis import (SATURATION_HIGH_GAIN, SATURATION_LOW_GAIN, DarkReference, Region,
                        YieldResult, YieldStatus, compute_yield)
-from .calibration import WavelengthCalibration
+from .calibration import DEFAULT_FILE as CALIBRATION_FILE, WavelengthCalibration
 from .device import DeviceError, Spectrometer, find_ports
 from .protocol import FLAG_LED_CHANGED, Frame
 from .recorder import Recorder
@@ -446,7 +446,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._error(f"Could not connect to {port}:\n{exc}")
             return
         status = self.spec.status
-        self.calibration = WavelengthCalibration.best(status.get("wl_coeffs"))
+        self.calibration = self._sync_calibration(status.get("wl_coeffs"))
         self.engine.wavelengths = self.calibration.wavelengths
         wl = self.engine.wavelengths
         self.spec_plot.setXRange(wl[0], wl[-1], padding=0.01)
@@ -456,6 +456,22 @@ class MainWindow(QtWidgets.QMainWindow):
             + ("" if self.calibration.calibrated else " (nominal 340-780 nm!)"))
         self._show_device_settings(status)
         self._set_connected(True)
+
+    def _sync_calibration(self, device_coeffs) -> WavelengthCalibration:
+        """calibration/wavelength_calibration.json is the reference: if the
+        device holds different coefficients, store the file's on the device."""
+        if not CALIBRATION_FILE.exists():
+            return WavelengthCalibration.best(device_coeffs)
+        cal = WavelengthCalibration.from_file()
+        if cal.same_as(device_coeffs):
+            return cal
+        try:
+            self.spec.set_wl_coeffs(cal.coefficients)
+            self.spec.save()
+            cal.source += ", copied to the device"
+        except DeviceError as exc:
+            self._error(f"Could not store the wavelength calibration on the device:\n{exc}")
+        return cal
 
     def disconnect_device(self) -> None:
         if self.spec is None:

@@ -9,7 +9,7 @@ plotted and recorded over time.
 ```
 firmware/main.py      MicroPython firmware (copy to the Pico as main.py)
 c12666ma/             Python package: driver, analysis, recorder, GUI
-calibration/          pixel -> wavelength calibration and its source data
+calibration/          pixel -> wavelength calibration and its laser measurements
 tools/hw_check.py     speed / reliability / noise check of a connected board
 tests/                unit tests (no hardware needed)
 notebooks/            the original measurement notebooks (K. Tolsma, 2026)
@@ -109,18 +109,23 @@ The noise floor (~11 mV rms) is set by the analog front end, not the sensor
 ## Wavelength calibration
 
 There is no Hamamatsu inspection sheet for this unit, so
-`calibration/fit_wavelength.py` fits a quadratic from two sources. The first
-is four LED spectra measured with both this sensor and a reference
-spectrometer (`calibration/LR1B/`). The second is the chlorophyll
-fluorescence peaks (685 / ~737 nm) in 13 leaf recordings, which anchor the
-red end beyond the last LED:
+`calibration/fit_wavelength.py` fits a weighted quadratic to:
 
-    nm = 345.98 + 2.3235·p − 0.0017379·p²     (p = pixel 0..255)
+- a green (532.0 nm) and a red (650 nm) laser pointer (`calibration/*_laser.csv`);
+- the chlorophyll fluorescence peaks (685 / ~737 nm) in 13 leaf recordings,
+  which constrain the curvature and the red end.
 
-The RMS residual is 2.3 nm. Treat it as about ±3 nm between 470 and 745 nm,
-and less certain outside that range. The coefficients are also stored on the
-device (`get_wl_coeffs`), and the GUI uses them from there. Pixel → λ is
-unchanged from the original firmware, so old data can use the same formula.
+The fit:
+
+    nm = 327.15 + 2.54396·p − 0.0024563·p²     (p = pixel 0..255)
+
+Expect about ±1 nm near 532 nm and a few nm up to 745 nm. Below 532 nm the
+curve is extrapolated, so a blue line would improve it: a violet (405 nm)
+laser, or a fluorescent lamp (Hg lines at 404.7 / 435.8 / 546.1 nm).
+
+`calibration/wavelength_calibration.json` is the reference. When the GUI
+connects, it writes these coefficients to the device's flash if the device
+holds different ones. Scripts can read them back with `get_wl_coeffs`.
 
 ## Hardware notes (board v2)
 
@@ -140,5 +145,5 @@ unchanged from the original firmware, so old data can use the same formula.
 ```
 python -m pytest                       # unit tests
 python tools/hw_check.py               # with a board connected
-python calibration/fit_wavelength.py   # re-fit the calibration
+python calibration/fit_wavelength.py   # re-fit the calibration (the GUI copies it to the device)
 ```
