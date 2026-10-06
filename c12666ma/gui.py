@@ -798,7 +798,21 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.warning(self, "C12666MA", text)
 
 
+def configure_qt() -> None:
+    """Call before creating the QApplication. Qt5 does not scale for high-DPI
+    displays by default; with Windows display scaling (e.g. 125 %) pyqtgraph
+    then draws the axis tick labels at the wrong positions. Qt6 always scales."""
+    if pg.Qt.QT_LIB in ("PyQt5", "PySide2"):
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+        if hasattr(QtGui.QGuiApplication, "setHighDpiScaleFactorRoundingPolicy"):
+            QtGui.QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+                QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+
+
 def main() -> None:
+    if QtWidgets.QApplication.instance() is None:
+        configure_qt()
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     win = MainWindow()
     win.resize(1400, 900)
