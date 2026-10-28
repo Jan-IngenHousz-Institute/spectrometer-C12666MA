@@ -30,11 +30,13 @@ from pathlib import Path
 from typing import Optional
 
 from . import __version__, simulator
+from .analysis import YieldResult, compute_paired_yield
 from .calibration import WavelengthCalibration
 from .device import DeviceError, Spectrometer, find_devices
 from .power import keep_awake
+from .protocol import Frame
 from .processing import AnalysisSettings, DeviceProcessor
-from .recorder import RotatingRecorder
+from .recorder import PairedRecorder, RotatingRecorder
 
 HOST_MARGIN_US = 5_000          # added to the slowest device's frame time
 SEND_AHEAD_S = 0.5              # triggers are sent up to this long before their start
@@ -111,6 +113,7 @@ class DeviceHandle:
         self.last_seq = frame.seq
         self.frames += 1
         self.session.results.append((self, frame, result))
+        self.session._pair_frame(self, frame)
 
     def _on_event(self, event: dict) -> None:
         if event.get("event") == "busy":
@@ -120,7 +123,7 @@ class DeviceHandle:
 
 
 class SessionRecording:
-    """A recording: one folder, one CSV series per device, session.json, events.log."""
+    """One folder with per-device spectra and an optional paired-measurements CSV."""
 
     def __init__(self, session: "AcquisitionSession", root: Path, prefix: str, note: str,
                  include_yield: bool, duration_s: float, part_hours: float) -> None:
@@ -136,6 +139,22 @@ class SessionRecording:
         self.stopped_at: Optional[float] = None
         self.stop_reason = ""
         self.recorders: dict[str, RotatingRecorder] = {}
+        self.measurement_roles = {
+            "incoming_light_uid": session.incoming_uid,
+            "fluorescence_uid": session.fluorescence_uid,
+        }
+        self._measurement_lock = threading.Lock()
+        self.paired_recorder: Optional[PairedRecorder] = None
+        if include_yield:
+            incident = session._handle(session.incoming_uid)
+            fluorescence = session._handle(session.fluorescence_uid)
+            self.paired_recorder = PairedRecorder(
+                self.folder / "measurements.csv",
+                f"{incident.name} ({incident.uid})",
+                f"{fluorescence.name} ({fluorescence.uid})",
+                (session.analysis.incident.lo_nm, session.analysis.incident.hi_nm),
+                (session.analysis.fluorescence.lo_nm, session.analysis.fluorescence.hi_nm),
+                session.analysis.k, self.t0)
         self._events = open(self.folder / "events.log", "a", encoding="utf-8", buffering=1)
         self.write_manifest()
 
@@ -163,22 +182,31 @@ class SessionRecording:
                                       f"c = {h.calibration.coefficients}",
             "incident_light_nm": f"{a.incident.lo_nm:.1f}-{a.incident.hi_nm:.1f}",
             "fluorescence_nm": f"{a.fluorescence.lo_nm:.1f}-{a.fluorescence.hi_nm:.1f}",
-            "rel_fluo_yield": "fluorescence / incident_light (dark-subtracted region sums); "
-                              f"region has signal if sum > {a.k:g} x noise; "
-                              "0 if neither region has signal",
+            "paired_measurement": (
+                "relative fluorescence from synchronized frames of the assigned devices"
+                if self.include_yield else "disabled for this recording"),
             "saturation_counts": f"high gain {a.sat_high:g}, low gain {a.sat_low:g}",
             "seq": "trigger number: spectra with the same seq were taken together"
                    if s.mode == "triggered" else "frame number",
             "note": self.note.replace("\n", " "),
         }
         rec = RotatingRecorder(self.folder, f"{_safe(h.name)}_{h.uid[-6:]}",
-                               h.processor.wavelengths, meta, self.include_yield,
+                               h.processor.wavelengths, meta, False,
                                self.part_hours, t0_epoch=self.t0)
         if h.processor.dark is not None:
             rec.write_dark(h.processor.dark)
         with h.processor.lock:
             h.processor.recorder = rec
         self.recorders[h.uid] = rec
+
+    def write_measurement(self, incident_handle: "DeviceHandle", incident_frame,
+                          fluorescence_handle: "DeviceHandle", fluorescence_frame,
+                          result: YieldResult) -> None:
+        with self._measurement_lock:
+            if self.paired_recorder is not None and self.stopped_at is None:
+                self.paired_recorder.write(
+                    incident_frame.seq, incident_frame.timestamp, fluorescence_frame.timestamp,
+                    incident_handle.name, fluorescence_handle.name, result)
 
     def log(self, line: str) -> None:
         if not self._events.closed:
@@ -190,6 +218,8 @@ class SessionRecording:
             if rec is not None:
                 with h.processor.lock:
                     rec.flush()
+        if self.paired_recorder is not None:
+            self.paired_recorder.flush()
 
     def write_manifest(self) -> None:
         s = self.session
@@ -211,6 +241,8 @@ class SessionRecording:
                          "fluorescence_nm": [a.fluorescence.lo_nm, a.fluorescence.hi_nm],
                          "k": a.k, "saturation_high_gain": a.sat_high,
                          "saturation_low_gain": a.sat_low},
+            "measurement_roles": self.measurement_roles,
+            "measurements_file": ("measurements.csv" if self.paired_recorder is not None else None),
             "ticks_sent": s.ticks_sent,
             "devices": [{
                 "uid": h.uid, "name": h.name, "port": h.port, "firmware": h.status.get("fw"),
@@ -235,6 +267,9 @@ class SessionRecording:
                     if h.processor.recorder is rec:
                         h.processor.recorder = None
                     rec.close()
+        with self._measurement_lock:
+            if self.paired_recorder is not None:
+                self.paired_recorder.close()
         self.write_manifest()
         self._events.close()
 
@@ -245,6 +280,12 @@ class AcquisitionSession:
         self.handles: list[DeviceHandle] = []
         self.analysis = AnalysisSettings()
         self.results: "collections.deque" = collections.deque(maxlen=100_000)
+        self.paired_results: "collections.deque" = collections.deque(maxlen=100_000)
+        self.incoming_uid: Optional[str] = None
+        self.fluorescence_uid: Optional[str] = None
+        self._pair_lock = threading.Lock()
+        self._incoming_frames: dict[int, tuple[DeviceHandle, Frame]] = {}
+        self._fluorescence_frames: dict[int, tuple[DeviceHandle, Frame]] = {}
         self.events: "collections.deque[tuple[float, str]]" = collections.deque(maxlen=5_000)
         self.period_us = 0                       # requested; 0 = as fast as possible
         self.running = False
@@ -279,6 +320,63 @@ class AcquisitionSession:
         if rec is not None:
             rec.log(line)
 
+    def _handle(self, uid: Optional[str]) -> Optional[DeviceHandle]:
+        return next((h for h in self.handles if h.uid == uid), None)
+
+    def set_measurement_roles(self, incoming_uid: Optional[str],
+                              fluorescence_uid: Optional[str]) -> None:
+        if incoming_uid == fluorescence_uid and incoming_uid is not None:
+            raise ValueError("incoming-light and fluorescence devices must be different")
+        known = {h.uid for h in self.handles}
+        if incoming_uid is not None and incoming_uid not in known:
+            raise ValueError(f"unknown incoming-light device: {incoming_uid}")
+        if fluorescence_uid is not None and fluorescence_uid not in known:
+            raise ValueError(f"unknown fluorescence device: {fluorescence_uid}")
+        with self._pair_lock:
+            self.incoming_uid = incoming_uid
+            self.fluorescence_uid = fluorescence_uid
+            self._incoming_frames.clear()
+            self._fluorescence_frames.clear()
+
+    def _pair_frame(self, h: DeviceHandle, frame: Frame) -> None:
+        incident_pair = None
+        with self._pair_lock:
+            incoming_uid, fluorescence_uid = self.incoming_uid, self.fluorescence_uid
+            if incoming_uid is None or fluorescence_uid is None:
+                return
+            if h.uid == incoming_uid:
+                own, other = self._incoming_frames, self._fluorescence_frames
+            elif h.uid == fluorescence_uid:
+                own, other = self._fluorescence_frames, self._incoming_frames
+            else:
+                return
+            own[frame.seq] = (h, frame)
+            counterpart = other.pop(frame.seq, None)
+            if counterpart is not None:
+                own.pop(frame.seq, None)
+                incident_pair = ((h, frame), counterpart) if h.uid == incoming_uid \
+                    else (counterpart, (h, frame))
+            for pending in (own, other):
+                while len(pending) > 128:
+                    del pending[min(pending)]
+
+        if incident_pair is None:
+            return
+        (incident_handle, incident_frame), (fluorescence_handle, fluorescence_frame) = incident_pair
+        result = compute_paired_yield(
+            incident_frame, incident_handle.processor.dark,
+            incident_handle.processor.wavelengths,
+            fluorescence_frame, fluorescence_handle.processor.dark,
+            fluorescence_handle.processor.wavelengths,
+            self.analysis.incident, self.analysis.fluorescence, self.analysis.k,
+            self.analysis.sat_high, self.analysis.sat_low)
+        paired = (incident_handle, incident_frame, fluorescence_handle,
+                  fluorescence_frame, result)
+        self.paired_results.append(paired)
+        recording = self.recording
+        if recording is not None:
+            recording.write_measurement(*paired)
+
     # -------------------------------------------------------------- devices
     @property
     def connected(self) -> list[DeviceHandle]:
@@ -303,6 +401,9 @@ class AcquisitionSession:
             h = DeviceHandle(self, spec, self._next_index)
             self._next_index += 1
             self.handles.append(h)
+            if len(self.handles) >= 2 and self.incoming_uid is None \
+                    and self.fluorescence_uid is None:
+                self.set_measurement_roles(self.handles[0].uid, self.handles[1].uid)
             self.log(f"connected on {port} (uid {h.uid}, wavelengths: {h.calibration.source})", h)
             if self.running:
                 self._restart_acquisition()
@@ -333,6 +434,10 @@ class AcquisitionSession:
                     h.processor.recorder = None
                 self.recording.recorders[h.uid].close()
             self.handles.remove(h)
+            if h.uid in (self.incoming_uid, self.fluorescence_uid):
+                incoming = None if h.uid == self.incoming_uid else self.incoming_uid
+                fluorescence = None if h.uid == self.fluorescence_uid else self.fluorescence_uid
+                self.set_measurement_roles(incoming, fluorescence)
             self.log("disconnected", h)
             if self.running:
                 if self.connected:
@@ -414,6 +519,9 @@ class AcquisitionSession:
             hs = self.connected
             if not hs:
                 raise DeviceError("no spectrometer connected")
+            with self._pair_lock:
+                self._incoming_frames.clear()
+                self._fluorescence_frames.clear()
             if self._continuous_eligible():
                 hs[0].spec.start_stream(0, on_frame=hs[0].processor.on_frame)
                 self.mode = "continuous"
@@ -517,6 +625,12 @@ class AcquisitionSession:
         with self.lock:
             if self.recording is not None:
                 raise DeviceError("already recording")
+            if include_yield and (
+                    self._handle(self.incoming_uid) not in self.connected
+                    or self._handle(self.fluorescence_uid) not in self.connected
+                    or self.incoming_uid == self.fluorescence_uid):
+                raise DeviceError("assign two connected spectrometers to incoming light and "
+                                  "fluorescence before saving relative fluorescence")
             if not self.running:
                 self.start()
             rec = SessionRecording(self, root, prefix, note, include_yield, duration_s, part_hours)

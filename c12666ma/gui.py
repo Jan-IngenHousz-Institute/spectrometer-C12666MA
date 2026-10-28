@@ -113,6 +113,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._selected: Optional[str] = None
         self._table_uids: list[str] = []
         self._last_warning = ("", 0.0, "")
+        self.latest_measurement = None
         self._last_event_t = 0.0
         self._detect_count = 0
         self._build_ui()
@@ -219,8 +220,13 @@ class MainWindow(QtWidgets.QMainWindow):
         lay.addWidget(g)
 
         # ---- regions
-        g = QtWidgets.QGroupBox("Regions and rel. fluo. yield (shared)")
+        g = QtWidgets.QGroupBox("Paired relative fluorescence")
         f = QtWidgets.QFormLayout(g)
+        self.incoming_device_box = QtWidgets.QComboBox()
+        self.fluorescence_device_box = QtWidgets.QComboBox()
+        f.addRow("Incoming-light spectrometer", self.incoming_device_box)
+        f.addRow("Fluorescence spectrometer", self.fluorescence_device_box)
+        f.addRow(QtWidgets.QLabel("Only matching synchronized frames are compared."))
         self.inc_lo = _spin(300, 900, 440, 1, 1, " nm")
         self.inc_hi = _spin(300, 900, 480, 1, 1, " nm")
         self.flu_lo = _spin(300, 900, 680, 1, 1, " nm")
@@ -228,9 +234,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.k_spin = _spin(0.5, 100, 5, 1, 0.5, " σ")
         self.sat_high_spin = _spin(100, 4095, SATURATION_HIGH_GAIN, 0, 10, " counts")
         self.sat_low_spin = _spin(100, 4095, SATURATION_LOW_GAIN, 0, 10, " counts")
-        f.addRow("incident_light from", self.inc_lo)
+        f.addRow("Incoming-light region from", self.inc_lo)
         f.addRow("to", self.inc_hi)
-        f.addRow("fluorescence from", self.flu_lo)
+        f.addRow("Fluorescence region from", self.flu_lo)
         f.addRow("to", self.flu_hi)
         f.addRow("Signal threshold", self.k_spin)
         f.addRow("Saturation (high gain)", self.sat_high_spin)
@@ -250,7 +256,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.prefix_edit = QtWidgets.QLineEdit("C12666MA")
         self.note_edit = QtWidgets.QLineEdit()
         self.note_edit.setPlaceholderText("written into the file header")
-        self.save_yield_check = QtWidgets.QCheckBox("Save rel. fluo. yield")
+        self.save_yield_check = QtWidgets.QCheckBox("Save paired rel. fluo. yield")
         self.save_yield_check.setChecked(True)
         self.duration_spin = _spin(0, 24 * 365, 0, 2, 1, " h")
         self.duration_spin.setSpecialValueText("until stopped")
@@ -297,9 +303,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.spec_plot.addItem(region)
             pg.InfLineLabel(region.lines[0], name, position=0.95, color=color)
 
-        self.yield_plot = pg.PlotWidget(title="rel. fluo. yield = fluorescence / incident_light")
+        self.yield_plot = pg.PlotWidget(title="paired rel. fluo. yield = fluorescence / incoming light")
         self.yield_plot.setLabel("bottom", "Time", units="s")
-        self.yield_plot.setLabel("left", "rel. fluo. yield")
+        self.yield_plot.setLabel("left", "paired rel. fluo. yield")
         self.yield_plot.showGrid(x=True, y=True, alpha=0.2)
         self.yield_plot.getAxis("left").enableAutoSIPrefix(False)
         self.yield_plot.setClipToView(True)
@@ -362,6 +368,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.avg_spin.valueChanged.connect(lambda v: self._apply_selected(n_avg=int(v)))
         self.led_check.toggled.connect(lambda on: self._apply_selected(led=on))
         self.copy_btn.clicked.connect(self._copy_to_all)
+        self.incoming_device_box.currentIndexChanged.connect(self._measurement_roles_changed)
+        self.fluorescence_device_box.currentIndexChanged.connect(self._measurement_roles_changed)
         self.period_spin.valueChanged.connect(self._apply_period)
         self.fastest_check.toggled.connect(self._apply_period)
         self.start_btn.toggled.connect(self.toggle_acquisition)
@@ -374,6 +382,45 @@ class MainWindow(QtWidgets.QMainWindow):
         self.flu_region.sigRegionChangeFinished.connect(self._region_dragged)
         self.record_btn.toggled.connect(self.toggle_recording)
         self._show_selected()
+
+    def _refresh_measurement_roles(self) -> None:
+        handles = self.session.handles
+        available = {h.uid for h in handles}
+        configured_incoming = self.settings.value("incoming_uid")
+        configured_fluorescence = self.settings.value("fluorescence_uid")
+        incoming = (str(configured_incoming) if configured_incoming in available
+                    else self.session.incoming_uid)
+        fluorescence = (str(configured_fluorescence) if configured_fluorescence in available
+                        else self.session.fluorescence_uid)
+        for box, selected in ((self.incoming_device_box, incoming),
+                              (self.fluorescence_device_box, fluorescence)):
+            box.blockSignals(True)
+            box.clear()
+            box.addItem("Select a spectrometer", None)
+            for h in handles:
+                box.addItem(f"{h.name} ({h.uid[-6:]})", h.uid)
+            index = box.findData(selected)
+            box.setCurrentIndex(max(0, index))
+            box.blockSignals(False)
+        self._measurement_roles_changed()
+
+    def _measurement_roles_changed(self, *_args) -> None:
+        incoming = self.incoming_device_box.currentData()
+        fluorescence = self.fluorescence_device_box.currentData()
+        if incoming is not None and incoming == fluorescence:
+            box = self.sender()
+            other = (self.fluorescence_device_box if box is self.incoming_device_box
+                     else self.incoming_device_box)
+            other.blockSignals(True)
+            other.setCurrentIndex(0)
+            other.blockSignals(False)
+            incoming = self.incoming_device_box.currentData()
+            fluorescence = self.fluorescence_device_box.currentData()
+        self.session.set_measurement_roles(incoming, fluorescence)
+        self.settings.setValue("incoming_uid", incoming or "")
+        self.settings.setValue("fluorescence_uid", fluorescence or "")
+        self.latest_measurement = None
+        self._clear_yield()
 
     # ============================================================ settings
     _PERSIST = ["inc_lo", "inc_hi", "flu_lo", "flu_hi", "k_spin", "sat_high_spin",
@@ -490,6 +537,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _rebuild_table(self) -> None:
         handles = self.session.handles
         self._table_uids = [h.uid for h in handles]
+        self._refresh_measurement_roles()
         self.table.blockSignals(True)
         self.table.setRowCount(len(handles))
         for r, h in enumerate(handles):
@@ -734,6 +782,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._show_finished_recording(rec)
         for w in (self.save_yield_check, self.duration_spin, self.part_spin):
             w.setEnabled(not start)
+        self.incoming_device_box.setEnabled(not start)
+        self.fluorescence_device_box.setEnabled(not start)
 
     def _show_finished_recording(self, rec) -> None:
         self.record_label.setText(f"{rec.stop_reason}: {rec.n_spectra} spectra in "
@@ -764,6 +814,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _clear_yield(self) -> None:
         for s in list(self.yield_series.values()) + [self.warn_series, self.sat_series]:
             s.clear()
+        for curve in self.yield_curves.values():
+            curve.setData([], [])
         self.t0 = None
 
     def _curves_for(self, h: DeviceHandle):
@@ -782,19 +834,31 @@ class MainWindow(QtWidgets.QMainWindow):
             h, frame, res = results.popleft()
             if self.t0 is None:
                 self.t0 = frame.timestamp
-            t = frame.timestamp - self.t0
-            _, _, series = self._curves_for(h)
+            self.latest[h.uid] = (frame, res)
+            changed.add(h.uid)
+        measurement_changed = False
+        while self.session.paired_results:
+            incoming_h, incoming_frame, fluorescence_h, fluorescence_frame, res = \
+                self.session.paired_results.popleft()
+            if self.t0 is None:
+                self.t0 = fluorescence_frame.timestamp
+            t = fluorescence_frame.timestamp - self.t0
+            _, yield_curve, series = self._curves_for(fluorescence_h)
             series.append(t, res.value)
             if res.warning:
                 self.warn_series.append(t, 0.0)
-                self._last_warning = (f"{h.name}: fluorescence signal without incident light",
-                                      now, WARN_STYLE)
+                self._last_warning = (
+                    f"{fluorescence_h.name}: fluorescence signal without incoming light",
+                    now, WARN_STYLE)
             if res.saturated:
                 self.sat_series.append(t, res.value if np.isfinite(res.value) else 0.0)
-                self._last_warning = (f"{h.name}: saturated pixels in a region; lower the "
-                                      "integration time or use low gain", now, WARN_STYLE)
-            self.latest[h.uid] = (frame, res)
-            changed.add(h.uid)
+                self._last_warning = (f"{fluorescence_h.name}: saturated pixels in a measured "
+                                      "region; lower the integration time or use low gain",
+                                      now, WARN_STYLE)
+            self.latest_measurement = (
+                incoming_h, incoming_frame, fluorescence_h, fluorescence_frame, res)
+            yield_curve.setData(series.x, series.y)
+            measurement_changed = True
         for uid in changed:
             h = self._handle(uid)
             if h is None:
@@ -804,10 +868,9 @@ class MainWindow(QtWidgets.QMainWindow):
             y = frame.counts
             if self.subtract_check.isChecked() and dark is not None and dark.matches(frame):
                 y = y - dark.mean
-            spec_curve, yield_curve, series = self._curves_for(h)
+            spec_curve, _, _ = self._curves_for(h)
             spec_curve.setData(h.processor.wavelengths, y)
-            yield_curve.setData(series.x, series.y)
-        if changed:
+        if changed or measurement_changed:
             self.warn_scatter.setData(self.warn_series.x, self.warn_series.y)
             self.sat_scatter.setData(self.sat_series.x, self.sat_series.y)
             self._update_value_label(now)
@@ -821,24 +884,40 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_value_label(self, now: float) -> None:
         h = self.selected
-        if h is None or h.uid not in self.latest:
+        if h is None:
             self.value_label.setText("")
             return
-        frame, res = self.latest[h.uid]
-        sat = self.session.analysis.sat_high if frame.high_gain else self.session.analysis.sat_low
-        dark = h.processor.dark
-        subtract = self.subtract_check.isChecked() and dark is not None and dark.matches(frame)
-        self.sat_line.setValue(sat - (float(np.mean(dark.mean)) if subtract else 0.0))
+        frame_result = self.latest.get(h.uid)
+        if frame_result is not None:
+            frame, _ = frame_result
+            sat = self.session.analysis.sat_high if frame.high_gain else self.session.analysis.sat_low
+            dark = h.processor.dark
+            subtract = self.subtract_check.isChecked() and dark is not None and dark.matches(frame)
+            self.sat_line.setValue(sat - (float(np.mean(dark.mean)) if subtract else 0.0))
+        paired = self.latest_measurement
+        if paired is None:
+            if self.session.incoming_uid and self.session.fluorescence_uid:
+                text = "Waiting for a synchronized measurement"
+            else:
+                text = "Assign two different spectrometers for a paired measurement"
+            self.value_label.setText(text)
+            return
+        if h.uid not in (self.session.incoming_uid, self.session.fluorescence_uid):
+            self.value_label.setText("Select incoming-light and fluorescence spectrometers")
+            return
+        incoming_h, _, fluorescence_h, _, res = paired
         if res.status == YieldStatus.NO_DARK:
-            text = f"{h.name}: no matching dark spectrum"
-            if h.processor.dark_progress is None and now - self._last_warning[1] > 1.0:
-                self._last_warning = ("No matching dark spectrum: press 'Take dark' "
-                                      "(needed for the yield)", now, INFO_STYLE)
+            text = (f"{incoming_h.name} → {fluorescence_h.name}: no matching dark spectrum "
+                    "on one or both devices")
+            if now - self._last_warning[1] > 1.0:
+                self._last_warning = ("No matching dark spectrum on both assigned devices: "
+                                      "press 'Take dark'", now, INFO_STYLE)
         else:
-            text = (f"{h.name}: incident_light {res.incident:.0f} ± {res.incident_noise:.0f} · "
-                    f"fluorescence {res.fluorescence:.0f} ± {res.fluorescence_noise:.0f}")
+            text = (f"{incoming_h.name}: incoming {res.incident:.0f} ± "
+                    f"{res.incident_noise:.0f} · {fluorescence_h.name}: fluorescence "
+                    f"{res.fluorescence:.0f} ± {res.fluorescence_noise:.0f}")
             if np.isfinite(res.value):
-                text += f" · yield {res.value:.4f}"
+                text += f" · rel. fluo. yield {res.value:.4f}"
         self.value_label.setText(text)
 
     def _update_warning(self, now: float) -> None:
