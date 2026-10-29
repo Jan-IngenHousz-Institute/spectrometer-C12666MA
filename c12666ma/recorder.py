@@ -16,6 +16,7 @@ the most recent `dark` row above them to get the signal.
 from __future__ import annotations
 
 import io
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -47,11 +48,15 @@ def _fmt_float(value: float) -> str:
 
 
 class Recorder:
+    """One CSV file. t_s counts from `t0_epoch` (host time, common to all
+    devices of a session) if given, else from the first spectrum's device clock."""
+
     def __init__(self, path: Path, wavelengths: np.ndarray, metadata: dict,
-                 include_yield: bool) -> None:
+                 include_yield: bool, t0_epoch: Optional[float] = None) -> None:
         self.path = Path(path)
         self.include_yield = include_yield
         self.n_spectra = 0
+        self._t0_epoch = t0_epoch
         self._t0_device: Optional[int] = None
         self._n_extra = len(BASE_COLUMNS) - 1 + (len(YIELD_COLUMNS) if include_yield else 0)
         self._file = open(self.path, "w", newline="", encoding="utf-8")
@@ -60,7 +65,8 @@ class Recorder:
         for key, value in metadata.items():
             f.write(f"# {key}: {value}\n")
         f.write("# pixel values: raw ADC counts (1 count = 1 mV) averaged over n_avg scans\n")
-        f.write("# timestamp: start of integration; t_s: seconds since the first spectrum\n")
+        f.write("# timestamp: start of integration; t_s: seconds since "
+                + ("the start of the session\n" if t0_epoch is not None else "the first spectrum\n"))
         columns = BASE_COLUMNS + (YIELD_COLUMNS if include_yield else [])
         columns += [f"px{i}" for i in range(len(wavelengths))]
         f.write(",".join(columns) + "\n")
@@ -69,10 +75,13 @@ class Recorder:
         f.flush()
 
     def _base(self, kind: str, frame_like: Frame) -> list:
-        if self._t0_device is None:
-            self._t0_device = frame_like.t_device_us
-        return [kind, iso_time(frame_like.timestamp),
-                f"{(frame_like.t_device_us - self._t0_device) / 1e6:.6f}",
+        if self._t0_epoch is not None:
+            t_s = frame_like.timestamp - self._t0_epoch
+        else:
+            if self._t0_device is None:
+                self._t0_device = frame_like.t_device_us
+            t_s = (frame_like.t_device_us - self._t0_device) / 1e6
+        return [kind, iso_time(frame_like.timestamp), f"{t_s:.6f}",
                 frame_like.seq, frame_like.integration_us, frame_like.n_avg,
                 int(frame_like.high_gain), int(frame_like.led), frame_like.flags]
 
@@ -109,3 +118,58 @@ class Recorder:
     def close(self) -> None:
         if not self._file.closed:
             self._file.close()
+
+
+class RotatingRecorder:
+    """A recording split into parts of `part_hours` each: <stem>_part001.csv, ...
+    Every part is a complete CSV (header, wavelength row, latest dark)."""
+
+    def __init__(self, folder: Path, stem: str, wavelengths: np.ndarray, metadata: dict,
+                 include_yield: bool, part_hours: float = 24.0,
+                 t0_epoch: Optional[float] = None, clock=time.time) -> None:
+        self.folder = Path(folder)
+        self.stem = stem
+        self.wavelengths = wavelengths
+        self.metadata = metadata
+        self.include_yield = include_yield
+        self.part_seconds = part_hours * 3600.0
+        self.t0_epoch = t0_epoch
+        self.clock = clock
+        self.part = 0
+        self.paths: list[Path] = []
+        self.n_spectra = 0
+        self._dark: Optional[DarkReference] = None
+        self._rec: Optional[Recorder] = None
+        self._open_part()
+
+    @property
+    def path(self) -> Path:
+        return self._rec.path
+
+    def _open_part(self) -> None:
+        if self._rec is not None:
+            self._rec.close()
+        self.part += 1
+        path = self.folder / f"{self.stem}_part{self.part:03d}.csv"
+        meta = dict(self.metadata, part=self.part)
+        self._rec = Recorder(path, self.wavelengths, meta, self.include_yield, self.t0_epoch)
+        self.paths.append(path)
+        self._part_start = self.clock()
+        if self._dark is not None:
+            self._rec.write_dark(self._dark)
+
+    def write_dark(self, dark: DarkReference) -> None:
+        self._dark = dark
+        self._rec.write_dark(dark)
+
+    def write_frame(self, frame: Frame, result: Optional[YieldResult] = None) -> None:
+        if self.clock() - self._part_start >= self.part_seconds:
+            self._open_part()
+        self._rec.write_frame(frame, result)
+        self.n_spectra += 1
+
+    def flush(self) -> None:
+        self._rec.flush()
+
+    def close(self) -> None:
+        self._rec.close()

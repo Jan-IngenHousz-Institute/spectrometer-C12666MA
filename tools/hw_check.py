@@ -38,6 +38,46 @@ def report(name, frames, spec):
     return x
 
 
+def check_triggered(spec, n=60, period_s=0.05):
+    """Triggered mode (multi-device sync): do frames start at the requested
+    device time, and does the device re-arm its DMA cleanly?"""
+    spec.set_avg(1)
+    spec.set_integration_us(10_000)
+    spec.start_stream(triggered=True)
+    rtt = spec.sync_clock()
+    t0 = time.perf_counter() + 0.2
+    due = {}
+    for k in range(n):                       # stay a few ticks ahead, like the session
+        t_tick = t0 + k * period_s
+        while time.perf_counter() < t_tick - 0.15:
+            time.sleep(0.005)
+        due[k] = spec.device_time_at(t_tick)
+        spec.trigger_at(k, due[k])
+    frames = collect(spec, 0.5)
+    spec.stop_stream()
+    err = np.array([f.t_device_us - due[f.seq] for f in frames if f.seq in due]) / 1000
+    late = sum(1 for f in frames if f.flags & 4)
+    print(f"triggered, {period_s * 1000:.0f} ms period: {len(frames)}/{n} frames, start vs requested "
+          f"device time: median {np.median(err):.2f} ms, max {err.max():.2f} ms, late {late}; "
+          f"clock sync round trip {rtt:.2f} ms")
+
+    # force frequent DMA re-arms (normally every ~23 h at the fastest rate)
+    spec.query_json(f"debug_dma_count,{4 * 2048}")
+    spec.start_stream(triggered=True)
+    t0 = time.perf_counter() + 0.2
+    for k in range(n):
+        t_tick = t0 + k * period_s
+        while time.perf_counter() < t_tick - 0.15:
+            time.sleep(0.005)
+        spec.trigger_at(k, spec.device_time_at(t_tick))
+    frames = collect(spec, 0.5)
+    counters = spec.get_status()["counters"]
+    spec.stop_stream()
+    spec.query_json(f"debug_dma_count,{0xFFFFFFFF}")
+    print(f"with the DMA re-armed every ~12 frames: {len(frames)}/{n} frames, ADC errors "
+          f"{sum(f.adc_errors for f in frames)}, overruns {counters['overruns']}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("port", nargs="?")
@@ -87,6 +127,9 @@ def main():
             frames = collect(spec, 3.1)
             spec.stop_stream()
             report("every 250 ms, 4 x 10 ms averaged", frames, spec)
+
+            if "min_trigger_period_us" in st:
+                check_triggered(spec)
         finally:
             spec.set_integration_us(saved[0])
             spec.set_avg(saved[1])

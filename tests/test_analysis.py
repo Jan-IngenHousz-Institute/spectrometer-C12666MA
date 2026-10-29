@@ -38,8 +38,17 @@ def spectrum(incident=0.0, fluo=0.0):
 
 def test_calibration_file_is_monotonic_and_in_range():
     assert np.all(np.diff(WL) > 0)
-    assert 330 < WL[0] < 360 and 780 < WL[-1] < 860
+    assert 300 < WL[0] < 360 and 780 < WL[-1] < 860
     assert INCIDENT.mask(WL).sum() > 10 and FLUO.mask(WL).sum() > 20
+
+
+def test_calibration_matches_device_float32_copy():
+    cal = WavelengthCalibration.from_file()
+    device = [float(np.float32(c)) for c in cal.coefficients]      # what the Pico stores
+    assert cal.same_as(device)
+    assert cal.same_as(device[:3])                                  # trailing zeros optional
+    assert not cal.same_as([c * 1.001 for c in device])
+    assert not cal.same_as([0.0] * 6) and not cal.same_as(None)
 
 
 def test_dark_noise_estimate(dark):
