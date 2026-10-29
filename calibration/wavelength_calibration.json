@@ -1,63 +1,49 @@
 {
   "description": "C12666MA pixel to wavelength: nm = sum(c[i] * p**i), p = 0-based pixel index",
   "coefficients": [
-    345.9807848894168,
-    2.3235178983542757,
-    -0.0017379211466397057,
+    327.1498214969004,
+    2.543956055307257,
+    -0.002456269829616721,
     0.0,
     0.0,
     0.0
   ],
   "pixel_index_base": 0,
   "valid_range_nm": [
-    470,
+    520,
     745
   ],
-  "accuracy_nm": "about +-3 nm within the valid range; extrapolated (about +-10 nm) outside",
+  "accuracy_nm": "about +-1 nm near 532 nm, a few nm up to 745 nm; below 532 nm the quadratic is extrapolated (no reference line there yet)",
   "method": "weighted quadratic fit, see calibration/fit_wavelength.py",
   "points": [
     {
-      "pixel": 137.96,
-      "nm": 634.8,
-      "sigma_nm": 1.0,
-      "residual_nm": 1.37,
-      "source": "Red LED"
+      "pixel": 88.0,
+      "nm": 532.0,
+      "sigma_nm": 0.3,
+      "residual_nm": -0.0,
+      "source": "green laser pointer (532.0 nm DPSS)"
     },
     {
-      "pixel": 121.46,
-      "nm": 604.5,
-      "sigma_nm": 1.0,
-      "residual_nm": 1.94,
-      "source": "Yellow LED"
-    },
-    {
-      "pixel": 106.23,
-      "nm": 570.0,
-      "sigma_nm": 1.0,
-      "residual_nm": -3.21,
-      "source": "Green LED"
-    },
-    {
-      "pixel": 57.0,
-      "nm": 473.3,
-      "sigma_nm": 1.0,
-      "residual_nm": 0.56,
-      "source": "Blue LED"
+      "pixel": 147.98,
+      "nm": 650.0,
+      "sigma_nm": 5.0,
+      "residual_nm": 0.18,
+      "source": "red laser pointer (650 nm diode)"
     },
     {
       "pixel": 167.91,
       "nm": 685.0,
-      "sigma_nm": 2.0,
-      "residual_nm": -2.12,
+      "sigma_nm": 2.5,
+      "residual_nm": -0.05,
       "source": "chlorophyll fluorescence F685 (13 leaf recordings, pixel sd 1.0)"
     },
     {
       "pixel": 199.52,
       "nm": 737.0,
       "sigma_nm": 5.0,
-      "residual_nm": -3.39,
+      "residual_nm": 0.06,
       "source": "chlorophyll fluorescence F740 band (13 leaf recordings, pixel sd 1.7)"
     }
   ],
-  "date": "2026-10-05"
+  "date": "2026-10-06"
 }

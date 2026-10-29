@@ -41,7 +41,7 @@
 #  Commands are text lines ending in "\n" or "\r". Replies are one text line
 #  ending in "\n". The old (v1) command names still work.
 #    hello                     -> C12666MA,v1.0      (device discovery)
-#    idn                       -> C12666MA_PICO_PY_v2.0
+#    idn                       -> C12666MA_PICO_PY_v2.1
 #    status                    -> JSON with all settings and counters
 #    spec / spec,raw           -> one spectrum as 256 comma-separated numbers
 #                                 (spec subtracts the on-device dark frame)
@@ -58,6 +58,16 @@
 #    set_name,<text> / get_name
 #    save                      -> write settings to flash (set_* no longer do)
 #    stream[,<period_us>]      -> start streaming binary packets
+#    stream,trig               -> start streaming in triggered mode: idle until
+#                                 `trig` arrives (used to synchronise devices)
+#    trig_at,<n>,<t_us>        -> triggered mode: start frame number <n> when the
+#                                 device clock (status "t_us") reaches <t_us>.
+#                                 Up to 16 can wait in a queue; no reply. A frame
+#                                 that cannot start on time starts as soon as
+#                                 possible and is flagged late; event "busy" if
+#                                 the queue is full.
+#    trig,<n>[,<delay_us>]     -> the same, <delay_us> after this command
+#    time                      -> {"t_us":<device clock>} (for clock sync)
 #    stop                      -> stop streaming
 #    reboot
 #
@@ -75,6 +85,7 @@
 #  (re)start, 4 = frame started late, 8 = ADC framing error.
 # =============================================================================
 
+import gc
 import sys
 import time
 import select
@@ -97,7 +108,7 @@ except ImportError:
 #  1. PINS & CONSTANTS
 # =============================================================================
 
-FW_ID = "C12666MA_PICO_PY_v2.0"
+FW_ID = "C12666MA_PICO_PY_v2.1"
 HELLO = "C12666MA,v1.0"        # unchanged so existing scripts still find it
 
 PIN_CLK = 2
@@ -126,7 +137,8 @@ RING_SCANS = 8
 RING_WORDS = RING_SCANS * N_PIXELS
 RING_BYTES = RING_WORDS * 4
 RING_SIZE_BITS = 13            # log2(RING_BYTES), DMA write-address ring
-DMA_COUNT = 0xFFFFFFFF
+DMA_COUNT = 0xFFFFFFFF          # words per DMA arm (~23 h at the fastest rate)
+DMA_REARM_BELOW = 1 << 20       # re-arm before the count runs out
 
 PIO0_BASE = 0x50200000
 PIO0_FDEBUG = PIO0_BASE + 0x008
@@ -387,7 +399,12 @@ g_words_done = 0
 g_ticks = 0                    # PIO cycles queued since the run started
 g_run_t0 = 0                   # time of the first push of the run
 g_tick_hz = 1
-g_mode = 0                     # 0 idle, 1 continuous, 2 periodic, 3 one-shot
+g_mode = 0                     # 0 idle, 1 continuous, 2 periodic, 3 one-shot,
+                               # 4 triggered
+g_dma_count = DMA_COUNT        # changed only by the debug_dma_count command
+g_triggered = False            # streaming in triggered mode
+g_trig_queue = []              # [(due device time us, frame number)], in time order
+TRIG_QUEUE_MAX = 16
 g_cont_scan = 0                # continuous: index of the next data command
 g_cont_clocks = 0
 g_cont_restart = False
@@ -402,7 +419,8 @@ g_adc_errors = 0
 g_frame_ready = False          # one-shot result available in g_sums
 g_late = False
 g_counters = {"frames": 0, "restarts": 0, "overruns": 0, "stalls": 0,
-              "adc_errors": 0}
+              "adc_errors": 0, "busy": 0}
+g_gc_due = False               # a frame was just sent: collect garbage at a quiet moment
 g_streaming = False
 g_stream_t0 = 0
 g_busy_us = 0                  # time spent processing and sending scans
@@ -430,6 +448,11 @@ def _dma_abort():
         pass
 
 
+def _dma_arm():
+    dma.config(read=PIO0_RXF1, write=g_ring_addr, count=g_dma_count,
+               ctrl=g_dma_ctrl, trigger=True)
+
+
 def pipeline_stop():
     global g_mode, g_pending
     if sm0 is not None:
@@ -449,8 +472,7 @@ def pipeline_start(mode):
     g_frame_seq = g_last_seq + 1       # frames queued but never read are not lost
     _sm_init()
     machine.mem32[PIO0_IRQ] = 0xFF                 # clear PIO IRQ flags
-    dma.config(read=PIO0_RXF1, write=g_ring_addr, count=DMA_COUNT,
-               ctrl=g_dma_ctrl, trigger=True)
+    _dma_arm()
     g_words_done = 0
     g_desc = deque((), 64)
     g_scan_in_frame = 0
@@ -483,14 +505,18 @@ def frame_period_us():
     return clocks_to_us(n * g_cfg["n_avg"])
 
 
+def single_frame_us():
+    """Time one frame takes from idle (periodic / triggered modes), plus margin."""
+    return clocks_to_us(integration_clocks(g_cfg["integration_us"])
+                        * g_cfg["n_avg"] + MIN_PERIOD_CLKS) + 2000
+
+
 def effective_period_us():
     p = g_cfg["period_us"]
     cont = frame_period_us()
     if p <= cont:
         return cont
-    single = clocks_to_us(integration_clocks(g_cfg["integration_us"])
-                          * g_cfg["n_avg"] + MIN_PERIOD_CLKS) + 2000
-    return max(p, single)
+    return max(p, single_frame_us())
 
 
 def _queue_frame():
@@ -549,7 +575,7 @@ def _sm0_idle():
 
 
 def _finish_frame(seq, t_start):
-    global g_frame_ready, g_cont_restart, g_late, g_last_seq, g_last_frame
+    global g_frame_ready, g_cont_restart, g_late, g_last_seq, g_last_frame, g_gc_due
     flags = 0
     if g_cont_restart:
         flags |= FLAG_RESTART
@@ -571,13 +597,14 @@ def _finish_frame(seq, t_start):
     g_frame_ready = True
     if g_on_frame is not None:
         g_on_frame(*g_last_frame)
+    g_gc_due = True
 
 
 def service_pipeline():
     """Queue commands, consume finished scans, detect timing problems.
     Call this as often as possible while a run is active."""
     global g_words_done, g_scan_in_frame, g_adc_errors, g_next_due, g_late
-    global g_periodic_seq, g_busy_us
+    global g_periodic_seq, g_busy_us, g_frame_seq
     if g_mode == 0:
         return
     # 1. queue work for the sensor
@@ -597,6 +624,17 @@ def service_pipeline():
             g_periodic_seq = _queue_frame()
             _push_pending(g_periodic_seq)
             machine.mem32[PIO0_FDEBUG] = FDEBUG_TXSTALL_SM0
+    elif g_mode == 4 and g_trig_queue:
+        due, seq = g_trig_queue[0]
+        t = now_us()
+        if t >= due and _sm0_idle():
+            if t > due + 1000 and not g_cont_restart:
+                g_late = True
+            g_trig_queue.pop(0)
+            g_frame_seq = seq
+            g_periodic_seq = _queue_frame()
+            _push_pending(g_periodic_seq)
+            machine.mem32[PIO0_FDEBUG] = FDEBUG_TXSTALL_SM0
     # 2. a stall in continuous mode would stretch an integration: restart
     if g_mode == 1 and machine.mem32[PIO0_FDEBUG] & FDEBUG_TXSTALL_SM0:
         g_counters["stalls"] += 1
@@ -604,8 +642,12 @@ def service_pipeline():
         pipeline_start(1)
         return
     # 3. consume finished scans
-    done = DMA_COUNT - dma.count
-    avail = done - g_words_done
+    remaining = dma.count
+    if remaining < min(DMA_REARM_BELOW, g_dma_count // 4):
+        if _rearm_dma():
+            return
+        remaining = dma.count
+    avail = (g_dma_count - remaining) - g_words_done
     if avail >= RING_WORDS:
         g_counters["overruns"] += 1
         send_event("overrun")
@@ -628,6 +670,23 @@ def service_pipeline():
         g_words_done += N_PIXELS
         avail -= N_PIXELS
     g_busy_us += time.ticks_diff(time.ticks_us(), t_busy)
+
+
+def _rearm_dma():
+    """The DMA transfer count is finite: re-arm it before it runs out. Between
+    frames this is seamless; in continuous mode the readout restarts (the next
+    frame is flagged). Returns True if the pipeline was restarted."""
+    global g_words_done
+    if g_mode == 1:
+        send_event("rearm")
+        pipeline_start(1)
+        return True
+    if g_pending or g_desc or not _sm0_idle():
+        return False                    # wait until the current frame is done
+    _dma_abort()
+    _dma_arm()
+    g_words_done = 0
+    return False
 
 
 def _resync_ticks(t):
@@ -723,9 +782,11 @@ def status_text():
         "high_gain": g_cfg["high_gain"], "led": g_led,
         "period_us": g_cfg["period_us"],
         "min_period_us": frame_period_us(),
+        "min_trigger_period_us": single_frame_us(),
         "effective_period_us": effective_period_us(),
         "streaming": 1 if g_streaming else 0,
-        "mode": ("idle", "continuous", "periodic", "single")[g_mode],
+        "mode": ("idle", "continuous", "periodic", "single", "triggered")[g_mode],
+        "uid": binascii.hexlify(machine.unique_id()).decode().upper(),
         "t_us": now_us(),
         "wl_coeffs": g_cfg["wl_coeffs"],
         "counters": g_counters,
@@ -744,22 +805,30 @@ def _int_arg(tokens, i, default=None):
         return default
 
 
-def start_stream(period_us=None):
-    global g_streaming, g_last_seq, g_on_frame, g_stream_t0, g_busy_us
+def start_stream(period_us=None, triggered=False):
+    global g_streaming, g_last_seq, g_on_frame, g_stream_t0, g_busy_us, g_triggered
     if period_us is not None:
         g_cfg["period_us"] = max(0, period_us)
+    g_triggered = triggered
     g_streaming = True
+    g_trig_queue.clear()
     g_last_seq = -1                     # sequence numbers start at 0
     g_stream_t0 = now_us()
     g_busy_us = 0
     g_on_frame = send_frame_packet
     restart_stream()
-    send_text_packet('{"stream":"started","period_us":%d,"effective_period_us":%d}'
-                     % (g_cfg["period_us"], effective_period_us()))
+    if triggered:
+        send_text_packet('{"stream":"started","mode":"triggered","min_trigger_period_us":%d}'
+                         % single_frame_us())
+    else:
+        send_text_packet('{"stream":"started","period_us":%d,"effective_period_us":%d}'
+                         % (g_cfg["period_us"], effective_period_us()))
 
 
 def restart_stream():
-    if g_cfg["period_us"] <= frame_period_us():
+    if g_triggered:
+        pipeline_start(4)
+    elif g_cfg["period_us"] <= frame_period_us():
         pipeline_start(1)
     else:
         pipeline_start(2)
@@ -768,13 +837,29 @@ def restart_stream():
 def stop_stream():
     global g_streaming, g_on_frame
     pipeline_stop()
+    g_trig_queue.clear()
     send_text_packet('{"stream":"stopped"}')
     g_streaming = False
     g_on_frame = None
 
 
+def _trigger(seq, due_us):
+    """Queue frame `seq` to start at device time `due_us`. A frame that cannot
+    start on time (the previous one is still running) starts as soon as
+    possible and is flagged late. The queue survives settings changes."""
+    if not (g_streaming and g_mode == 4):
+        reply('{"error":"trig needs stream,trig"}')
+    elif len(g_trig_queue) >= TRIG_QUEUE_MAX:
+        g_counters["busy"] += 1
+        send_text_packet('{"event":"busy","trig":%d}' % seq)
+    else:
+        g_trig_queue.append((due_us, seq))
+        if len(g_trig_queue) > 1 and due_us < g_trig_queue[-2][0]:
+            g_trig_queue.sort()
+
+
 def handle_command(cmd):
-    global g_have_dark, g_on_frame
+    global g_have_dark, g_on_frame, g_dma_count
     tokens = cmd.strip().split(",")
     tok = tokens[0].strip().lower()
     if tok == "":
@@ -787,6 +872,8 @@ def handle_command(cmd):
         reply(FW_ID)
     elif tok == "status":
         reply(status_text())
+    elif tok == "time":
+        reply('{"t_us":%d}' % now_us())
 
     elif tok == "set_integration":
         us = _int_arg(tokens, 1)
@@ -846,9 +933,16 @@ def handle_command(cmd):
     elif tok == "get_clock":
         reply(str(g_clk_hz))
 
+    elif tok == "trig":
+        _trigger(_int_arg(tokens, 1, 0), now_us() + max(0, _int_arg(tokens, 2, 0)))
+    elif tok == "trig_at":
+        _trigger(_int_arg(tokens, 1, 0), _int_arg(tokens, 2, 0))
     elif tok == "stream":
         if not g_streaming:
-            start_stream(_int_arg(tokens, 1))
+            if len(tokens) > 1 and tokens[1].strip() == "trig":
+                start_stream(triggered=True)
+            else:
+                start_stream(_int_arg(tokens, 1))
         else:
             reply('{"stream":"already running"}')
     elif tok == "stop":
@@ -899,6 +993,9 @@ def handle_command(cmd):
     elif tok == "get_name":
         reply(g_cfg["name"])
 
+    elif tok == "debug_dma_count":         # testing only: force early DMA re-arms
+        g_dma_count = max(4 * RING_WORDS, _int_arg(tokens, 1, DMA_COUNT))
+        reply('{"dma_count":%d}' % g_dma_count)
     elif tok == "save":
         save_config()
         reply('{"save":"ok"}')
@@ -916,7 +1013,25 @@ def handle_command(cmd):
 #  9. MAIN LOOP
 # =============================================================================
 
+GC_QUIET_US = 40_000           # collect only if the next frame is at least this far away
+
+
+def _gc_safe():
+    """True when a garbage collection (a few ms) cannot delay a frame start.
+    A collection at a random moment is what made triggered frames start late."""
+    if g_pending or g_desc:
+        return False
+    if g_mode == 0:
+        return True
+    if g_mode == 4:
+        return not g_trig_queue or g_trig_queue[0][0] - now_us() > GC_QUIET_US
+    if g_mode == 2:
+        return g_next_due - now_us() > GC_QUIET_US
+    return False
+
+
 def main():
+    global g_gc_due
     load_config()
     apply_gain()
     set_led(0)
@@ -928,7 +1043,11 @@ def main():
     line = bytearray()
     while True:
         service_pipeline()
-        while poll.poll(0 if g_mode else 1):
+        if g_gc_due and _gc_safe():
+            gc.collect()
+            g_gc_due = False
+        # ipoll does not allocate, poll() would (a list per loop: garbage)
+        for _ in poll.ipoll(0 if g_mode else 1):
             c = stdin.read(1)
             if c == b"\r" or c == b"\n":
                 if line:
