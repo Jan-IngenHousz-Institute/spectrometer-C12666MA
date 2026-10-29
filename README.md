@@ -205,7 +205,7 @@ Sign in to openJII (prod): create a personal API key at
   https://openjii.org/en-US/platform/account/api-keys
 Open that page in the browser? (y/n) [y]:
 Paste the API key (hidden):
-openJII (prod): signed in as Ludovico Caracciolo
+openJII (prod): signed in as John Doe
 ```
 
 **2. Choose the experiment and the table.** Pick a number from the list of your
@@ -215,11 +215,11 @@ keep the default name unless you want separate tables.
 
 ```
 Active experiments you are a member of:
-   1. spectrometer-Kjell  (5db72a32-1c50-4d81-b12c-0352cc65b5e6)
+   1. test-experiment  (5db72a32-1c50-4d11-b12c-0152cc65b5e6)
    2. another one (paste its id or URL)
 Record into experiment: 1
 Upload table name in the experiment [c12666ma_spectra]:
-Experiment: spectrometer-Kjell  (https://openjii.org/en-US/platform/experiments/5db72a32-...)
+Experiment: test-experiment  (https://openjii.org/en-US/platform/experiments/5db72a32-...)
 Table: c12666ma_spectra (will be created)
 ```
 
@@ -255,7 +255,7 @@ The recording then starts. Every minute a status line shows what has been
 measured and uploaded:
 
 ```
-Recording to C:\Users\you\C12666MA data\spectrometer-Kjell_2026-10-28_22-16-18
+Recording to C:\Users\you\C12666MA data\test-experiment_2026-10-28_22-16-18
 Period 60 s, upload every 15m, until Ctrl-C
 
 22:17:18 · tick 7 · Fluor 6 · Top 6 · 12 spectra on disk · uploads 0 confirmed, 1 waiting
@@ -308,14 +308,14 @@ anything is left:
 Stopping (Ctrl-C)...
 Uploading the last batch and waiting for the platform's confirmation...
 Uploads: {'completed': 96}
-Local files: C:\Users\you\C12666MA data\spectrometer-Kjell_2026-10-28_22-16-18  (2880 spectra)
+Local files: C:\Users\you\C12666MA data\test-experiment_2026-10-28_22-16-18  (2880 spectra)
 ```
 
 If the network was down, or the laptop crashed or restarted during a
 recording, send what is left later with the folder of that recording:
 
 ```
-python -m c12666ma.record upload "C:\Users\you\C12666MA data\spectrometer-Kjell_2026-10-28_22-16-18"
+python -m c12666ma.record upload "C:\Users\you\C12666MA data\test-experiment_2026-10-28_22-16-18"
 ```
 
 This also recovers the spectra written just before a crash. Running it on a
@@ -375,7 +375,7 @@ flags, then the answers remembered from the last run. This is how to start it
 from a batch file or from Windows Task Scheduler.
 
 ```
-python -m c12666ma.record --yes --experiment "spectrometer-Kjell" --table c12666ma_spectra ^
+python -m c12666ma.record --yes --experiment "test-experiment" --table c12666ma_spectra ^
     --device Fluor=high,100,1 --device Top=low,50,4,on --period 60 --upload-every 15m ^
     --duration 5d --folder "D:\spectra" --note "chamber 2"
 ```
