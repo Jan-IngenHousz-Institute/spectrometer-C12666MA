@@ -5502,7 +5502,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 36.5252 118.11 0)
 			(hide yes)
 			(show_name no)
@@ -5787,6 +5787,87 @@
 	)
 	(symbol
 		(lib_id "Device:C")
+		(at 76.2 171.45 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "3b44124d-d3f0-4ab0-938a-7c89feb98ee7")
+		(property "Reference" "C8"
+			(at 77.978 175.768 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0,1μF"
+			(at 80.264 173.228 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 77.1652 175.26 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 76.2 171.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 76.2 171.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "74d521d3-86ce-4537-927a-1d6f9b67b6bf")
+		)
+		(pin "2"
+			(uuid "8aa165f0-bfec-4cba-aab7-168440243990")
+		)
+		(instances
+			(project "Raspberry pico board"
+				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
+					(reference "C8")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
 		(at 125.73 165.1 90)
 		(unit 1)
 		(body_style 1)
@@ -5818,7 +5899,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 129.54 164.1348 0)
 			(hide yes)
 			(show_name no)
@@ -5899,7 +5980,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 249.8852 110.49 0)
 			(hide yes)
 			(show_name no)
@@ -5980,7 +6061,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 138.43 38.4048 0)
 			(hide yes)
 			(show_name no)
@@ -6508,7 +6589,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 83.5152 133.35 0)
 			(hide yes)
 			(show_name no)
@@ -6667,8 +6748,9 @@
 				)
 			)
 		)
-		(property "Footprint" "Library JII FP:MCP1541-I-TO"
+		(property "Footprint" "MCP1541-I_TO:TO127P254X495-3"
 			(at 111.76 130.81 0)
+			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6891,6 +6973,84 @@
 			(project "Raspberry pico board"
 				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
 					(reference "U5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 83.82 176.53 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "a16871d1-dca5-480e-a312-dd8ba9411bfb")
+		(property "Reference" "#PWR021"
+			(at 83.82 182.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 83.82 181.61 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 83.82 176.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 83.82 176.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 83.82 176.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "38d483ac-3311-4831-a1ab-dafb6daaf491")
+		)
+		(instances
+			(project "Raspberry pico board"
+				(path "/81531308-61af-4f59-a14f-8eee88cccc1e"
+					(reference "#PWR021")
 					(unit 1)
 				)
 			)
@@ -7243,7 +7403,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 135.5852 151.13 0)
 			(hide yes)
 			(show_name no)
@@ -7585,7 +7745,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder"
+		(property "Footprint" ""
 			(at 94.9452 64.77 0)
 			(hide yes)
 			(show_name no)
