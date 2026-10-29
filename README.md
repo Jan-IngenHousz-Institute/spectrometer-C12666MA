@@ -2,10 +2,11 @@
 
 Hamamatsu C12666MA micro-spectrometer (340–780 nm, 256 pixels) read by a
 Raspberry Pi Pico through an MCP3301 13-bit ADC, on the JII "C12666MA Board
-v2". Includes a live GUI for chlorophyll fluorescence: two wavelength regions
-(`incident_light`, `fluorescence`) and their ratio, the *rel. fluo. yield*,
-plotted and recorded over time, from one spectrometer or several in sync,
-for recordings of minutes to days. A terminal recorder uploads the spectra to
+v2". Includes a live GUI for chlorophyll fluorescence: it calculates relative
+fluorescence from the incident-light region on a selected top spectrometer and
+the fluorescence region on a selected bottom spectrometer, then plots the
+ratio over time. Multiple spectrometers are synchronized for recordings of
+minutes to days. A terminal recorder uploads the spectra to
 an [openJII](https://openjii.org) experiment
 ([README_recorder.md](README_recorder.md)).
 
@@ -41,6 +42,8 @@ python -m c12666ma --simulate 3    # try it with three simulated spectrometers
    averages, and the table shows when one no longer matches ("redo").
 4. Drag the blue (`incident_light`) and red (`fluorescence`) regions, or type
    their limits. They apply to all spectrometers.
+   Select the top (incident-light) and bottom (fluorescence) scanners in the
+   controls below the live graph; both need matching dark spectra.
 5. The **3D spectrum history** tab shows the most recent spectra of the
    selected spectrometer as a surface over wavelength, time and counts. It
    keeps up to 5000 spectra per spectrometer in memory, can show the latest
@@ -74,14 +77,17 @@ stalls. Spectra of the same tick have the same `seq` in every file.
 
 ### Rel. fluo. yield
 
-`fluorescence / incident_light`, where each term is the sum of
-dark-subtracted counts over its region. A region "has signal" when that sum
-is more than *k* × its noise (k = 5 by default; the noise comes from the dark
-frames).
+The live GUI calculates `bottom fluorescence / top incident_light` from
+dark-subtracted sums in the selected wavelength regions. It combines readings
+only when both scanners have the same synchronized frame sequence number. A
+region "has signal" when its sum is more than *k* × its noise (k = 5 by
+default; the noise comes from that scanner's dark frames). Both scanners need
+a matching dark spectrum. The per-scanner `rel_fluo_yield` values in recording
+files remain calculated from each individual spectrometer.
 
-| incident_light | fluorescence | result |
+| Top incident_light | Bottom fluorescence | result |
 |---|---|---|
-| signal | any | fluorescence / incident_light |
+| signal | any | bottom fluorescence / top incident_light |
 | no signal | signal | empty + warning *fluorescence without incident light* |
 | no signal | no signal | 0 |
 

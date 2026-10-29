@@ -125,3 +125,28 @@ def compute_yield(frame: Frame, dark: Optional[DarkReference], wavelengths: np.n
     else:
         value, status = 0.0, YieldStatus.NO_SIGNAL
     return YieldResult(value, status, s_i, s_f, n_i, n_f, saturated)
+
+
+def compute_cross_scanner_yield(incident: YieldResult, fluorescence: YieldResult,
+                                k: float = 5.0) -> YieldResult:
+    """Combine incident-light and fluorescence measurements from separate scanners."""
+    saturated = incident.saturated or fluorescence.saturated
+    if (incident.status == YieldStatus.NO_DARK
+            or fluorescence.status == YieldStatus.NO_DARK):
+        return YieldResult(float("nan"), YieldStatus.NO_DARK, incident.incident,
+                           fluorescence.fluorescence, incident.incident_noise,
+                           fluorescence.fluorescence_noise, saturated)
+
+    s_i = incident.incident
+    s_f = fluorescence.fluorescence
+    n_i = incident.incident_noise
+    n_f = fluorescence.fluorescence_noise
+    has_i = s_i > k * n_i
+    has_f = s_f > k * n_f
+    if has_i:
+        value, status = s_f / s_i, YieldStatus.OK
+    elif has_f:
+        value, status = float("nan"), YieldStatus.FLUO_WITHOUT_INCIDENT
+    else:
+        value, status = 0.0, YieldStatus.NO_SIGNAL
+    return YieldResult(value, status, s_i, s_f, n_i, n_f, saturated)
