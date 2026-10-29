@@ -1,4 +1,33 @@
-.Old/
+# measurement data and recordings live on Teams/OneDrive or openJII, not in git
 data/*
-.First try VSCode
 LR1B/*
+.Old/
+.First try VSCode
+
+# Python caches and build output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# editors and IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# KiCad local files (see also kicad/.gitignore)
+*-backups/
+*.kicad_prl
+fp-info-cache
+_autosave-*
+~*.lck
+
+# operating system
+Thumbs.db
+desktop.ini
+.DS_Store

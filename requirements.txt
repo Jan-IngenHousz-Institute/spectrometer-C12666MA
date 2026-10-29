@@ -2,6 +2,7 @@ numpy
 pyserial
 PySide6
 pyqtgraph
+requests
 # optional: reading recordings, notebooks, tests, re-fitting the calibration
 pandas
 pytest

@@ -34,6 +34,9 @@ class DeviceProcessor:
         self.sink = sink
         self.dark: Optional[DarkReference] = None
         self.recorder = None                  # Recorder / RotatingRecorder, set by the session
+        # called with each frame the recorder writes (e.g. the openJII upload
+        # queue), under the same lock: both outputs always hold the same frames
+        self.extra_writer: Optional[Callable[[Frame], None]] = None
         self.last_frame: Optional[Frame] = None
         self.dark_finished = threading.Event()
         self._dark_frames: Optional[list[Frame]] = None
@@ -85,6 +88,8 @@ class DeviceProcessor:
         with self.lock:
             if self.recorder is not None:
                 self.recorder.write_frame(frame, result if self.recorder.include_yield else None)
+                if self.extra_writer is not None:
+                    self.extra_writer(frame)
         if self.sink is not None:
             self.sink(frame, result)
         return result
