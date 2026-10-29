@@ -15,8 +15,8 @@ c12666ma/             Python package: driver, analysis, recorder, GUI, openJII u
 calibration/          pixel -> wavelength calibration and its laser measurements
 tools/hw_check.py     speed / reliability / noise check of a connected board
 tests/                unit tests (no hardware needed)
-notebooks/            the original measurement notebooks (K. Tolsma, 2026)
-kicad/                PCB v2 (KiCad)
+notebooks/            K. Tolsma's measurement and PAM notebooks, and a Digilent WaveForms test
+kicad/                PCB v2, two variants: Pico on the back / on the front
 legacy/arduino/       earlier Arduino Uno sketches, incl. the MCP3301 bench test
 legacy/python-v1/     the first MicroPython firmware (MAIN.py) and playground notebooks
 ```
@@ -41,8 +41,18 @@ python -m c12666ma --simulate 3    # try it with three simulated spectrometers
    averages, and the table shows when one no longer matches ("redo").
 4. Drag the blue (`incident_light`) and red (`fluorescence`) regions, or type
    their limits. They apply to all spectrometers.
-5. **Start recording**, optionally with a duration. It runs until stopped or
+5. The **3D spectrum history** tab shows the most recent spectra of the
+   selected spectrometer as a surface over wavelength, time and counts. It
+   keeps up to 5000 spectra per spectrometer in memory, can show the latest
+   2–500, and updates while it is open.
+6. **Start recording**, optionally with a duration. It runs until stopped or
    for days; a new file part starts every 24 h (adjustable).
+
+`run_C12666MA_3D_GUI.py` starts the GUI from any folder:
+
+```
+python path\to\spectrometer-C12666MA\run_C12666MA_3D_GUI.py
+```
 
 ### Several spectrometers
 

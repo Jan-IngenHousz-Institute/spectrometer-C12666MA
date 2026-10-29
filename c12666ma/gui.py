@@ -12,6 +12,7 @@ when the window redraws slower. The window redraws ~30 times per second.
 from __future__ import annotations
 
 import argparse
+import collections
 import sys
 import time
 from datetime import datetime
@@ -21,6 +22,9 @@ from typing import Optional
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+# after pyqtgraph, so matplotlib uses the Qt binding pyqtgraph picked
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 
 from . import __version__, simulator
 from .analysis import SATURATION_HIGH_GAIN, SATURATION_LOW_GAIN, Region, YieldStatus
@@ -35,6 +39,7 @@ DEVICE_COLORS = [(235, 235, 235), (255, 170, 0), (80, 200, 255), (120, 220, 120)
 WARN_STYLE = "background:#b3261e; color:white; padding:3px 8px; border-radius:3px;"
 INFO_STYLE = "background:#8a6d00; color:white; padding:3px 8px; border-radius:3px;"
 MAX_PLOT_POINTS = 300_000        # per device in the yield plot; older points thinned
+SPECTRUM_HISTORY = 5000          # spectra per device kept for the 3D view
 
 
 def device_color(h: DeviceHandle) -> tuple:
@@ -108,6 +113,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sat_series = GrowingSeries()
         self.t0: Optional[float] = None
         self.latest: dict[str, tuple] = {}             # uid -> (frame, result)
+        self.spectrum_history: dict[str, collections.deque] = {}   # uid -> (t, frame)
+        self._next_3d_update = 0.0
         self._rates: dict[str, float] = {}
         self._frames_at: dict[str, tuple[int, float]] = {}
         self._selected: Optional[str] = None
@@ -339,9 +346,13 @@ class MainWindow(QtWidgets.QMainWindow):
         split.addWidget(self.log_view)
         split.setSizes([480, 340, 90])
 
+        self.plot_tabs = QtWidgets.QTabWidget()
+        self.plot_tabs.addTab(split, "Live plots")
+        self.plot_tabs.addTab(self._build_3d_tab(), "3D spectrum history")
+
         main = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         main.addWidget(scroll)
-        main.addWidget(split)
+        main.addWidget(self.plot_tabs)
         main.setSizes([380, 1000])
         self.setCentralWidget(main)
 
@@ -373,7 +384,35 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inc_region.sigRegionChangeFinished.connect(self._region_dragged)
         self.flu_region.sigRegionChangeFinished.connect(self._region_dragged)
         self.record_btn.toggled.connect(self.toggle_recording)
+        self.plot_tabs.currentChanged.connect(lambda _: self._refresh_3d_if_visible())
+        self.spectrum_count_spin.valueChanged.connect(lambda _: self._refresh_3d_if_visible())
+        self.refresh_3d_btn.clicked.connect(lambda: self._update_3d_plot())
         self._show_selected()
+
+    def _build_3d_tab(self) -> QtWidgets.QWidget:
+        """The most recent spectra of the selected spectrometer as a surface over
+        wavelength and time (K. Tolsma)."""
+        tab = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(tab)
+        tools = QtWidgets.QHBoxLayout()
+        tools.addWidget(QtWidgets.QLabel("Show last"))
+        self.spectrum_count_spin = QtWidgets.QSpinBox()
+        self.spectrum_count_spin.setRange(2, 500)
+        self.spectrum_count_spin.setValue(100)
+        tools.addWidget(self.spectrum_count_spin)
+        tools.addWidget(QtWidgets.QLabel("spectra of the selected spectrometer"))
+        self.refresh_3d_btn = QtWidgets.QPushButton("Refresh 3D")
+        tools.addWidget(self.refresh_3d_btn)
+        self.auto_3d_check = QtWidgets.QCheckBox("Update while viewing")
+        self.auto_3d_check.setChecked(True)
+        tools.addWidget(self.auto_3d_check)
+        tools.addStretch(1)
+        lay.addLayout(tools)
+        self.figure_3d = Figure()
+        self.canvas_3d = FigureCanvasQTAgg(self.figure_3d)
+        self.canvas_3d.setMinimumSize(500, 400)
+        lay.addWidget(self.canvas_3d)
+        return tab
 
     # ============================================================ settings
     _PERSIST = ["inc_lo", "inc_hi", "flu_lo", "flu_hi", "k_spin", "sat_high_spin",
@@ -479,6 +518,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.yield_plot.removeItem(curve)
         self.yield_series.pop(uid, None)
         self.latest.pop(uid, None)
+        self.spectrum_history.pop(uid, None)
 
     def _rename_in_legend(self, h: DeviceHandle) -> None:
         legend = self.spec_plot.plotItem.legend
@@ -559,6 +599,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if r < len(self._table_uids):
                 self._selected = self._table_uids[r]
         self._show_selected()
+        self._refresh_3d_if_visible()
 
     def _show_selected(self) -> None:
         h = self.selected
@@ -654,6 +695,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.start_btn.setChecked(False)
                 self.start_btn.blockSignals(False)
                 return
+            for history in self.spectrum_history.values():
+                history.clear()
             self.start_btn.setText("Stop")
         else:
             if self.session.recording is not None:
@@ -794,6 +837,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._last_warning = (f"{h.name}: saturated pixels in a region; lower the "
                                       "integration time or use low gain", now, WARN_STYLE)
             self.latest[h.uid] = (frame, res)
+            history = self.spectrum_history.get(h.uid)
+            if history is None:
+                history = self.spectrum_history[h.uid] = collections.deque(maxlen=SPECTRUM_HISTORY)
+            history.append((t, frame))
             changed.add(h.uid)
         for uid in changed:
             h = self._handle(uid)
@@ -817,7 +864,48 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.yield_plot.setXRange(max(0.0, last - window), max(window, last), padding=0)
             else:
                 self.yield_plot.enableAutoRange(axis="x")
+        if (self._selected in changed and self.plot_tabs.currentIndex() == 1
+                and self.auto_3d_check.isChecked() and now >= self._next_3d_update):
+            self._update_3d_plot()
         self._update_warning(now)
+
+    def _refresh_3d_if_visible(self) -> None:
+        if self.plot_tabs.currentIndex() == 1:
+            self._update_3d_plot()
+
+    def _update_3d_plot(self) -> None:
+        started = time.monotonic()
+        h = self.selected
+        history = list(self.spectrum_history.get(h.uid, ())) if h is not None else []
+        history = history[-self.spectrum_count_spin.value():]
+        self.figure_3d.clear()
+        ax = self.figure_3d.add_subplot(111, projection="3d")
+        if len(history) < 2:
+            ax.text2D(0.5, 0.5, "Collect at least two spectra to plot a 3D surface",
+                      transform=ax.transAxes, ha="center", va="center")
+            ax.set_axis_off()
+        else:
+            dark = h.processor.dark
+            subtract = self.subtract_check.isChecked()
+            times = np.asarray([t for t, _ in history])
+            spectra = np.asarray([
+                frame.counts - dark.mean
+                if subtract and dark is not None and dark.matches(frame) else frame.counts
+                for _, frame in history])
+            wavelength_grid, time_grid = np.meshgrid(h.processor.wavelengths, times)
+            surface = ax.plot_surface(wavelength_grid, time_grid, spectra, cmap="viridis",
+                                      linewidth=0, antialiased=False,
+                                      rstride=max(1, len(history) // 100), cstride=2)
+            ax.set_xlabel("Wavelength (nm)")
+            ax.set_ylabel("Time (s)")
+            ax.set_zlabel("Counts (dark-subtracted where matched)" if subtract else "Counts")
+            ax.set_title(f"{h.name}: most recent {len(history)} spectra")
+            self.figure_3d.colorbar(surface, ax=ax, shrink=0.65, pad=0.12, label="Counts")
+        self.figure_3d.tight_layout()
+        self.canvas_3d.draw()
+        # drawing runs in the GUI thread: wait at least three times the drawing time
+        took = time.monotonic() - started
+        self._next_3d_update = time.monotonic() + max(1.0, 3 * took)
 
     def _update_value_label(self, now: float) -> None:
         h = self.selected

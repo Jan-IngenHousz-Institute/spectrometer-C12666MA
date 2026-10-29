@@ -2,10 +2,10 @@ numpy
 pyserial
 PySide6
 pyqtgraph
+matplotlib
 requests
 # optional: reading recordings, notebooks, tests, re-fitting the calibration
 pandas
 pytest
-matplotlib
 openpyxl
 mpremote
