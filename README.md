@@ -2,19 +2,23 @@
 
 Hamamatsu C12666MA micro-spectrometer (340–780 nm, 256 pixels) read by a
 Raspberry Pi Pico through an MCP3301 13-bit ADC, on the JII "C12666MA Board
-v2". Includes a live GUI for chlorophyll fluorescence: one spectrometer
-measures incoming light and another measures fluorescence. Their synchronized
-spectra are used to calculate and record the *rel. fluo. yield* over time.
+v2". Includes a live GUI for chlorophyll fluorescence: two wavelength regions
+(`incident_light`, `fluorescence`) and their ratio, the *rel. fluo. yield*,
+plotted and recorded over time, from one spectrometer or several in sync,
+for recordings of minutes to days. A terminal recorder uploads the spectra to
+an [openJII](https://openjii.org) experiment
+([README_recorder.md](README_recorder.md)).
 
 ```
 firmware/main.py      MicroPython firmware (copy to the Pico as main.py)
-c12666ma/             Python package: driver, analysis, recorder, GUI
+c12666ma/             Python package: driver, analysis, recorder, GUI, openJII upload
 calibration/          pixel -> wavelength calibration and its laser measurements
 tools/hw_check.py     speed / reliability / noise check of a connected board
 tests/                unit tests (no hardware needed)
-notebooks/            the original measurement notebooks (K. Tolsma, 2026)
-hardware/kicad/       PCB v2, two variants: Pico on the back / on the front
+notebooks/            K. Tolsma's measurement and PAM notebooks, and a Digilent WaveForms test
+kicad/                PCB v2, two variants: Pico on the back / on the front
 legacy/arduino/       earlier Arduino Uno sketches, incl. the MCP3301 bench test
+legacy/python-v1/     the first MicroPython firmware (MAIN.py) and playground notebooks
 ```
 
 ## Quick start
@@ -32,16 +36,23 @@ python -m c12666ma --simulate 3    # try it with three simulated spectrometers
    spectrum per integration time (about 190 spectra/s at the 5.2 ms minimum).
    Otherwise all spectrometers take one spectrum together at every period (see
    below).
-3. In **Paired relative fluorescence**, assign one spectrometer to incoming
-   light and a different one to fluorescence. The first two connected devices
-   are assigned automatically; the roles can be changed in the selectors.
-4. Cover both sensors or switch the light off and press **Take dark**. Each
-   scanner needs a dark spectrum taken with the same gain, integration time
-   and averages, and the table shows when one no longer matches ("redo").
-5. Set the incoming-light and fluorescence wavelength regions. Each region is
-   applied only to its assigned spectrometer.
+3. Cover the sensors or switch the light off and press **Take dark**. The
+   yield needs a dark spectrum taken with the same gain, integration time and
+   averages, and the table shows when one no longer matches ("redo").
+4. Drag the blue (`incident_light`) and red (`fluorescence`) regions, or type
+   their limits. They apply to all spectrometers.
+5. The **3D spectrum history** tab shows the most recent spectra of the
+   selected spectrometer as a surface over wavelength, time and counts. It
+   keeps up to 5000 spectra per spectrometer in memory, can show the latest
+   2–500, and updates while it is open.
 6. **Start recording**, optionally with a duration. It runs until stopped or
    for days; a new file part starts every 24 h (adjustable).
+
+`run_C12666MA_3D_GUI.py` starts the GUI from any folder:
+
+```
+python path\to\spectrometer-C12666MA\run_C12666MA_3D_GUI.py
+```
 
 ### Several spectrometers
 
@@ -102,14 +113,29 @@ separates the row types:
   repeated at the top of every part)
 - `spectrum`: one row per spectrum, with the timestamp (start of
   integration), `t_s` (seconds since the recording started, the same time base
-  for all spectrometers), `seq` (the tick number), settings and raw counts
-  (not dark-subtracted).
+  for all spectrometers), `seq` (the tick number), settings, optionally
+  `incident_light`, `fluorescence`, `rel_fluo_yield`, `yield_status`, and the
+  raw counts (not dark-subtracted).
 
-When **Save rel. fluo. yield** is enabled, `measurements.csv` contains the
-paired trigger number, `t_s` (seconds from recording start), both timestamps
-and device names, the incoming-light and fluorescence sums, their ratio, and
-its status. The per-device files keep the original spectra and dark
-references; the paired file is the source of the relative-yield results.
+### Unattended recording with upload to openJII
+
+`python -m c12666ma.record` records with all connected spectrometers from
+the terminal, for hours or days, and sends the spectra to an experiment on
+[openJII](https://openjii.org) as an *upload table*. Each unit keeps its own
+gain, integration time and averages.
+
+```
+python -m c12666ma.record                 asks everything: sign-in, experiment, settings
+python -m c12666ma.record login           (re)enter the openJII API key
+python -m c12666ma.record upload FOLDER   finish the uploads of an earlier recording
+```
+
+The spectra are written locally first (the recording folder described above)
+and uploaded every 15 minutes, one row per spectrum with its timestamp and
+settings. Without network they wait on disk and go out later.
+**[README_recorder.md](README_recorder.md)** explains the whole procedure:
+sign-in, laptop settings for runs of several days, the uploaded columns,
+starting from Task Scheduler and troubleshooting.
 
 ### Scripting
 

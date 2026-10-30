@@ -85,6 +85,7 @@
 #  (re)start, 4 = frame started late, 8 = ADC framing error.
 # =============================================================================
 
+import gc
 import sys
 import time
 import select
@@ -419,6 +420,7 @@ g_frame_ready = False          # one-shot result available in g_sums
 g_late = False
 g_counters = {"frames": 0, "restarts": 0, "overruns": 0, "stalls": 0,
               "adc_errors": 0, "busy": 0}
+g_gc_due = False               # a frame was just sent: collect garbage at a quiet moment
 g_streaming = False
 g_stream_t0 = 0
 g_busy_us = 0                  # time spent processing and sending scans
@@ -573,7 +575,7 @@ def _sm0_idle():
 
 
 def _finish_frame(seq, t_start):
-    global g_frame_ready, g_cont_restart, g_late, g_last_seq, g_last_frame
+    global g_frame_ready, g_cont_restart, g_late, g_last_seq, g_last_frame, g_gc_due
     flags = 0
     if g_cont_restart:
         flags |= FLAG_RESTART
@@ -595,6 +597,7 @@ def _finish_frame(seq, t_start):
     g_frame_ready = True
     if g_on_frame is not None:
         g_on_frame(*g_last_frame)
+    g_gc_due = True
 
 
 def service_pipeline():
@@ -1010,7 +1013,25 @@ def handle_command(cmd):
 #  9. MAIN LOOP
 # =============================================================================
 
+GC_QUIET_US = 40_000           # collect only if the next frame is at least this far away
+
+
+def _gc_safe():
+    """True when a garbage collection (a few ms) cannot delay a frame start.
+    A collection at a random moment is what made triggered frames start late."""
+    if g_pending or g_desc:
+        return False
+    if g_mode == 0:
+        return True
+    if g_mode == 4:
+        return not g_trig_queue or g_trig_queue[0][0] - now_us() > GC_QUIET_US
+    if g_mode == 2:
+        return g_next_due - now_us() > GC_QUIET_US
+    return False
+
+
 def main():
+    global g_gc_due
     load_config()
     apply_gain()
     set_led(0)
@@ -1022,7 +1043,11 @@ def main():
     line = bytearray()
     while True:
         service_pipeline()
-        while poll.poll(0 if g_mode else 1):
+        if g_gc_due and _gc_safe():
+            gc.collect()
+            g_gc_due = False
+        # ipoll does not allocate, poll() would (a list per loop: garbage)
+        for _ in poll.ipoll(0 if g_mode else 1):
             c = stdin.read(1)
             if c == b"\r" or c == b"\n":
                 if line:
