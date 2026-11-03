@@ -3,6 +3,8 @@ data/*
 LR1B/*
 .Old/
 .First try VSCode
+LR1B/*
+c12666ma/__pycache__
 
 # Python caches and build output
 __pycache__/

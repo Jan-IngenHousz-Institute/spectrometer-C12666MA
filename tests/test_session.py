@@ -109,18 +109,26 @@ def test_recording_files_and_rotation(sess, tmp_path):
                                part_hours=1.0 / 3600)        # new part every second
     time.sleep(2.6)
     sess.stop_recording()
-    files = sorted(p.name for p in rec.folder.glob("*.csv"))
+    files = sorted(p.name for p in rec.folder.glob("*_part*.csv"))
     assert len(files) == 9                                    # 3 devices x 3 parts
     assert {f.split("_part")[0] for f in files} == {f"SIM-{i}_{u}" for i, u in
                                                     zip((1, 2, 3), [h.uid[-6:] for h in sess.connected])}
     manifest = json.loads((rec.folder / "session.json").read_text())
     assert manifest["stopped"] and manifest["stop_reason"] == "stopped by user"
     assert manifest["mode"] == "triggered" and len(manifest["devices"]) == 3
+    assert manifest["measurements_file"] == "measurements.csv"
+    measurements = pd.read_csv(rec.folder / "measurements.csv", comment="#")
+    assert len(measurements) >= 40
+    assert measurements["seq"].is_monotonic_increasing
+    assert measurements["t_s"].astype(float).is_monotonic_increasing
+    assert (measurements["incoming_light_device"] == "SIM-1").all()
+    assert (measurements["fluorescence_device"] == "SIM-2").all()
     assert "recording started" in (rec.folder / "events.log").read_text()
     seqs = []
     for h in sess.connected:
         parts = sorted(rec.folder.glob(f"{h.name}_*.csv"))
         df = pd.concat([pd.read_csv(p, comment="#") for p in parts])
+        assert "rel_fluo_yield" not in df.columns
         spectra = df[df.kind == "spectrum"]
         assert len(spectra) == rec.recorders[h.uid].n_spectra
         assert spectra["t_s"].astype(float).is_monotonic_increasing
@@ -152,7 +160,7 @@ def test_timed_recording_stops_itself(sess, tmp_path):
     h = sess.connect("SIM1")
     sess.apply(h, integration_us=10_000)
     sess.set_period_us(50_000)
-    rec = sess.start_recording(tmp_path, duration_s=1.0)
+    rec = sess.start_recording(tmp_path, duration_s=1.0, include_yield=False)
     assert wait_for(lambda: sess.recording is None, 4)
     assert rec.stop_reason == "duration reached"
 

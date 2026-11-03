@@ -74,10 +74,12 @@ stalls. Spectra of the same tick have the same `seq` in every file.
 
 ### Rel. fluo. yield
 
-`fluorescence / incident_light`, where each term is the sum of
-dark-subtracted counts over its region. A region "has signal" when that sum
-is more than *k* × its noise (k = 5 by default; the noise comes from the dark
-frames).
+`fluorescence / incident_light`, where `incident_light` is the dark-subtracted
+sum from the incoming-light spectrometer's region and `fluorescence` is the
+dark-subtracted sum from the fluorescence spectrometer's region. Only frames
+with the same synchronized trigger number are compared. A region "has signal"
+when that sum is more than *k* × its own scanner's noise (k = 5 by default;
+the noise comes from that scanner's dark frames).
 
 | incident_light | fluorescence | result |
 |---|---|---|

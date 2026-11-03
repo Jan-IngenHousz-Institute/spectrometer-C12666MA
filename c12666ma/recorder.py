@@ -15,7 +15,9 @@ the most recent `dark` row above them to get the signal.
 
 from __future__ import annotations
 
+import csv
 import io
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -173,3 +175,51 @@ class RotatingRecorder:
 
     def close(self) -> None:
         self._rec.close()
+
+
+class PairedRecorder:
+    """CSV output for one synchronized incoming/fluorescence device pair."""
+
+    def __init__(self, path: Path, incident_device: str, fluorescence_device: str,
+                 incident_region: tuple[float, float],
+                 fluorescence_region: tuple[float, float], k: float,
+                 t0_epoch: float) -> None:
+        self.path = Path(path)
+        self.t0_epoch = t0_epoch
+        self._file = open(self.path, "w", newline="", encoding="utf-8")
+        self._writer = csv.writer(self._file)
+        self._lock = threading.Lock()
+        self.n_measurements = 0
+        for key, value in (
+                ("incoming_light_device", incident_device),
+                ("fluorescence_device", fluorescence_device),
+                ("incoming_light_nm", f"{incident_region[0]:.1f}-{incident_region[1]:.1f}"),
+                ("fluorescence_nm", f"{fluorescence_region[0]:.1f}-{fluorescence_region[1]:.1f}"),
+                ("signal_threshold", f"{k:g} x noise")):
+            self._file.write(f"# {key}: {value}\n")
+        self._writer.writerow([
+            "seq", "t_s", "incoming_light_timestamp", "fluorescence_timestamp",
+            "incoming_light_device", "fluorescence_device", "incident_light",
+            "fluorescence", "rel_fluo_yield", "yield_status",
+        ])
+
+    def write(self, seq: int, incident_timestamp: float, fluorescence_timestamp: float,
+              incident_device: str, fluorescence_device: str, result: YieldResult) -> None:
+        with self._lock:
+            self._writer.writerow([
+                seq, f"{fluorescence_timestamp - self.t0_epoch:.6f}",
+                iso_time(incident_timestamp), iso_time(fluorescence_timestamp),
+                incident_device, fluorescence_device, _fmt_float(result.incident),
+                _fmt_float(result.fluorescence), _fmt_float(result.value),
+                result.status.value + (";saturated" if result.saturated else ""),
+            ])
+            self.n_measurements += 1
+
+    def flush(self) -> None:
+        with self._lock:
+            self._file.flush()
+
+    def close(self) -> None:
+        with self._lock:
+            if not self._file.closed:
+                self._file.close()
