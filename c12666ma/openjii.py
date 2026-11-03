@@ -1,4 +1,5 @@
-"""openJII client for uploading recordings into an experiment's upload table.
+"""openJII client: uploads recordings into an experiment's upload table, and
+downloads an experiment's tables.
 
 Authentication: openJII has no password or device-code flow for desktop
 tools; a personal API key (``jii_...``, created in the web app under
@@ -12,6 +13,13 @@ the table (needs *manage* access), later ones append (*contribute* access).
 Each row of an NDJSON file becomes one row of the table, nested values kept.
 Every upload starts a Databricks job; ``GET .../data/uploads`` reports when
 its rows are queryable, so uploads are batched (see uploader.py).
+
+Download: ``GET /api/v1/experiments/{id}/tables`` lists the tables of the
+experiment's Data page, and ``GET .../data?tableName=&page=&pageSize=`` reads
+one of them up to 1000 rows at a time. The platform's file export (``POST
+.../data/exports``, the Download button of the page) is not used: it runs a
+Databricks job per table, and in production (November 2026) an export whose
+job could not record its result is never listed as completed or failed.
 """
 
 from __future__ import annotations
@@ -34,6 +42,10 @@ TABLE_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,62}$")
 
 class OpenJIIError(RuntimeError):
     """API or authentication failure, with a message meant for the terminal."""
+
+
+class PageTooLarge(OpenJIIError):
+    """A page of a table holds more data than one read returns."""
 
 
 @dataclass(frozen=True)
@@ -76,6 +88,14 @@ class UploadRecord:
     @property
     def finished(self) -> bool:
         return self.status in ("completed", "failed")
+
+
+@dataclass
+class Table:
+    identifier: str              # 'raw_data', a macro id or an upload table id
+    name: str                    # as the experiment's Data page shows it
+    type: str                    # static, macro, upload
+    rows: int
 
 
 # ----------------------------------------------------------------- settings
@@ -261,6 +281,34 @@ class OpenJIIClient:
                       upload_ids: set[str]) -> dict[str, UploadRecord]:
         return {u.upload_id: u for u in self.list_uploads(experiment_id, table_name)
                 if u.upload_id in upload_ids}
+
+    # ------------------------------------------------------------ download
+    def list_tables(self, experiment_id: str) -> list[Table]:
+        """The tables of the experiment's Data page."""
+        status, payload = self._request("GET", f"/api/v1/experiments/{experiment_id}/tables")
+        if status != 200 or not isinstance(payload, list):
+            raise OpenJIIError(f"listing tables failed ({status}): {self._error_text(payload)}")
+        return [Table(t["identifier"], t.get("displayName") or t["identifier"],
+                      t.get("tableType") or "", t.get("totalRows") or 0)
+                for t in payload if isinstance(t, dict) and t.get("identifier")]
+
+    def read_table_page(self, experiment_id: str, table: str, page: int, page_size: int) -> dict:
+        """One page of a table (by identifier), ordered by the row id so that the
+        pages neither overlap nor skip rows. -> {'columns': [{'name', 'type_text'}],
+        'rows': [{...}]}; values as the SQL warehouse returns them, mostly strings
+        (see download.py). The warehouse may first have to start: a long timeout."""
+        status, payload = self._request(
+            "GET", f"/api/v1/experiments/{experiment_id}/data",
+            params={"tableName": table, "page": page, "pageSize": page_size,
+                    "orderBy": "id", "orderDirection": "ASC"}, timeout=max(self.timeout, 300))
+        if status == 400 and ("PAGE_TOO_LARGE" in json.dumps(payload)
+                              or "smaller page size" in self._error_text(payload)):
+            raise PageTooLarge(f"page {page} of {page_size} rows of table {table} is too large")
+        if (status != 200 or not isinstance(payload, list) or not payload
+                or not isinstance(payload[0], dict) or not isinstance(payload[0].get("data"), dict)):
+            raise OpenJIIError(f"reading table {table} failed ({status}): {self._error_text(payload)}")
+        data = payload[0]["data"]
+        return {"columns": data.get("columns") or [], "rows": data.get("rows") or []}
 
 
 def parse_experiment_ref(text: str) -> str:

@@ -11,7 +11,7 @@ an [openJII](https://openjii.org) experiment
 
 ```
 firmware/main.py      MicroPython firmware (copy to the Pico as main.py)
-c12666ma/             Python package: driver, analysis, recorder, GUI, openJII upload
+c12666ma/             Python package: driver, analysis, recorder, GUI, openJII upload and download
 calibration/          pixel -> wavelength calibration and its laser measurements
 tools/hw_check.py     speed / reliability / noise check of a connected board
 tests/                unit tests (no hardware needed)
@@ -126,6 +126,7 @@ gain, integration time and averages.
 python -m c12666ma.record                 asks everything: sign-in, experiment, settings
 python -m c12666ma.record login           (re)enter the openJII API key
 python -m c12666ma.record upload FOLDER   finish the uploads of an earlier recording
+python -m c12666ma.download               download all tables of an experiment into one JSON file
 ```
 
 The spectra are written locally first (the recording folder described above)
@@ -133,7 +134,7 @@ and uploaded every 15 minutes, one row per spectrum with its timestamp and
 settings. Without network they wait on disk and go out later.
 **[README_recorder.md](README_recorder.md)** explains the whole procedure:
 sign-in, laptop settings for runs of several days, the uploaded columns,
-starting from Task Scheduler and troubleshooting.
+starting from Task Scheduler, downloading the data again and troubleshooting.
 
 ### Scripting
 

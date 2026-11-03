@@ -158,7 +158,7 @@ def sign_in(settings: Settings, env: Environment, prompter: Prompter,
 
 
 def choose_experiment(client: OpenJIIClient, settings: Settings, prompter: Prompter,
-                      requested: Optional[str]) -> Experiment:
+                      requested: Optional[str], question: str = "Record into experiment") -> Experiment:
     remembered = settings.get("experiment") or {}
     if requested:
         ref = parse_experiment_ref(requested)
@@ -181,7 +181,7 @@ def choose_experiment(client: OpenJIIClient, settings: Settings, prompter: Promp
     options = [f"{e.name}  ({e.id})" for e in experiments] + ["another one (paste its id or URL)"]
     default = next((i for i, e in enumerate(experiments) if e.id == remembered.get("id")), None)
     print("\nActive experiments you are a member of:")
-    choice = prompter.choose("Record into experiment", options, default)
+    choice = prompter.choose(question, options, default)
     if choice < len(experiments):
         return experiments[choice]
     return client.get_experiment(parse_experiment_ref(prompter.ask("Experiment id or URL")))
