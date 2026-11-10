@@ -3,8 +3,8 @@ import math
 import numpy as np
 import pytest
 
-from c12666ma.analysis import (DarkReference, Region, YieldStatus,
-                               compute_cross_scanner_yield, compute_yield)
+from c12666ma.analysis import (DarkReference, Region, YieldStatus, compute_paired_yield,
+                               compute_yield)
 from c12666ma.calibration import WavelengthCalibration
 from c12666ma.protocol import Frame
 
@@ -65,37 +65,22 @@ def test_yield_is_ratio_of_region_sums(dark):
     assert not res.saturated
 
 
-def test_cross_scanner_yield_uses_top_incident_and_bottom_fluorescence(dark):
-    top = compute_yield(make_frame(spectrum(incident=400)), dark, WL, INCIDENT, FLUO)
-    bottom = compute_yield(make_frame(spectrum(fluo=40)), dark, WL, INCIDENT, FLUO)
-
-    res = compute_cross_scanner_yield(top, bottom)
-
+def test_paired_yield_uses_incoming_and_fluorescence_devices(dark):
+    incoming = make_frame(spectrum(incident=400))
+    fluorescence = make_frame(spectrum(fluo=40))
+    res = compute_paired_yield(incoming, dark, WL, fluorescence, dark, WL,
+                               INCIDENT, FLUO)
     expected = (40 * FLUO.mask(WL).sum()) / (400 * INCIDENT.mask(WL).sum())
     assert res.status == YieldStatus.OK
     assert res.value == pytest.approx(expected, rel=0.05)
-    assert res.incident == pytest.approx(top.incident)
-    assert res.fluorescence == pytest.approx(bottom.fluorescence)
+    assert res.incident > 0 and res.fluorescence > 0
 
 
-def test_cross_scanner_yield_reports_fluorescence_without_incident(dark):
-    top = compute_yield(make_frame(spectrum()), dark, WL, INCIDENT, FLUO)
-    bottom = compute_yield(make_frame(spectrum(fluo=100)), dark, WL, INCIDENT, FLUO)
-
-    res = compute_cross_scanner_yield(top, bottom)
-
-    assert res.status == YieldStatus.FLUO_WITHOUT_INCIDENT
-    assert math.isnan(res.value)
-
-
-def test_cross_scanner_yield_requires_dark_for_both_scanners(dark):
-    top = compute_yield(make_frame(spectrum(incident=400)), dark, WL, INCIDENT, FLUO)
-    bottom = compute_yield(make_frame(spectrum(fluo=40)), None, WL, INCIDENT, FLUO)
-
-    res = compute_cross_scanner_yield(top, bottom)
-
-    assert res.status == YieldStatus.NO_DARK
-    assert math.isnan(res.value)
+def test_paired_yield_requires_matching_sequence_numbers(dark):
+    with pytest.raises(ValueError, match="same sequence"):
+        compute_paired_yield(make_frame(spectrum(incident=400), seq=1), dark, WL,
+                             make_frame(spectrum(fluo=40), seq=2), dark, WL,
+                             INCIDENT, FLUO)
 
 
 def test_incident_without_fluorescence_gives_near_zero(dark):

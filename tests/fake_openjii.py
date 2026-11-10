@@ -1,6 +1,8 @@
-"""A stand-in for the openJII API, enough for the recorder: API-key check,
-experiments, access, upload tables. Uploads become 'completed' when they are
-listed the second time, like the platform's job finishing."""
+"""A stand-in for the openJII API, enough for the recorder and the download:
+API-key check, experiments, access, upload tables, and reading the tables of
+the Data page. Uploads become 'completed' when they are listed the second
+time, like the platform's job finishing. Table pages return their values as
+text, like the platform's SQL warehouse."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 VALID_KEY = "jii_test_key_123"
 EXPERIMENT = {"id": "11111111-2222-4333-8444-555555555555", "name": "Test leaves", "status": "active"}
 OTHER = {"id": "66666666-7777-4888-9999-000000000000", "name": "Other", "status": "active"}
+FIRST_ROW_ID = 10 ** 17                    # row ids pass 2^53, as on the platform
 
 
 def parse_multipart(body: bytes, content_type: str) -> tuple[list[tuple[str, str]], list[tuple[str, str, bytes]]]:
@@ -34,9 +37,25 @@ def parse_multipart(body: bytes, content_type: str) -> tuple[list[tuple[str, str
     return fields, files
 
 
+def warehouse_text(value):
+    """A value as a page of the API holds it: text, list elements too."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return json.dumps([warehouse_text(v) for v in value])
+    if isinstance(value, dict):
+        return json.dumps(value)
+    return str(value)
+
+
 class FakeOpenJII:
     def __init__(self, *, can_manage: bool = True, can_contribute: bool = True,
-                 list_shape: str = "list", fail_uploads: bool = False) -> None:
+                 list_shape: str = "list", fail_uploads: bool = False,
+                 data_tables: dict[str, tuple[list, list]] | None = None,
+                 max_page_rows: int | None = None, fail_reads: int = 0) -> None:
+        """data_tables: display name -> ([(column, type)], rows); every row gets an `id`."""
         self.can_manage = can_manage
         self.can_contribute = can_contribute
         self.list_shape = list_shape
@@ -44,6 +63,16 @@ class FakeOpenJII:
         self.uploads: list[dict] = []          # records as the API lists them
         self.received: list[dict] = []         # {fields, files}
         self.tables: dict[str, str] = {}       # name -> id
+        # tables of the Data page: id -> {name, columns, rows (sorted by id)}
+        self.data_tables: dict[str, dict] = {}
+        for name, (columns, rows) in (data_tables or {}).items():
+            self.data_tables[str(uuid.uuid4())] = {
+                "name": name, "columns": [("id", "BIGINT")] + list(columns),
+                "rows": [{"id": FIRST_ROW_ID + 7919 * i, **r} for i, r in enumerate(rows)]}
+        self.max_page_rows = max_page_rows     # larger pages: PAGE_TOO_LARGE
+        self.fail_reads = fail_reads           # the first N page reads answer 503
+        self.page_requests: list[dict] = []
+        self.on_page = None                    # called with (table id, page) after each page
         self.lock = threading.Lock()
         self.requests: list[tuple[str, str]] = []
         server_ref = self
@@ -99,6 +128,13 @@ class FakeOpenJII:
                                     u["status"] = "running"
                                 out.append(dict(u))
                         return self._send(200, {"uploads": out})
+                    if rest == "/tables":
+                        return self._send(200, [
+                            {"identifier": i, "tableType": "upload", "displayName": t["name"],
+                             "totalRows": len(t["rows"]), "latestRowAt": None, "schemaRevision": None}
+                            for i, t in server_ref.data_tables.items()])
+                    if rest == "/data":
+                        return self._send(*server_ref.read_page(q))
                 return self._send(404, {"message": "not found"})
 
             def do_POST(self):
@@ -148,6 +184,44 @@ class FakeOpenJII:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def read_page(self, q: dict) -> tuple[int, object]:
+        """GET .../data: one page of a table, sorted by `orderBy`."""
+        self.page_requests.append(q)
+        if self.fail_reads:
+            self.fail_reads -= 1
+            return 503, {"message": "Service Unavailable"}
+        table = self.data_tables.get(q.get("tableName"))
+        if table is None:
+            return 404, {"message": "table not found"}
+        page, size = int(q.get("page", 1)), int(q.get("pageSize", 5))
+        if self.max_page_rows is not None and size > self.max_page_rows:
+            return 400, {"message": "This page holds more data than one read can return. "
+                                    "Choose a smaller page size.", "code": "PAGE_TOO_LARGE"}
+        with self.lock:
+            rows = table["rows"]
+            if q.get("orderBy"):
+                rows = sorted(rows, key=lambda r: r[q["orderBy"]])
+            chosen = rows[(page - 1) * size:page * size]
+            total = len(table["rows"])
+        payload = [{"name": q["tableName"], "catalog_name": "x", "schema_name": "centrum",
+                    "page": page, "pageSize": size, "totalPages": -(-total // size), "totalRows": total,
+                    "data": {"columns": [{"name": c, "type_name": t.split("<")[0], "type_text": t}
+                                         for c, t in table["columns"]],
+                             "rows": [{c: warehouse_text(r.get(c)) for c, _ in table["columns"]}
+                                      for r in chosen],
+                             "totalRows": total, "truncated": False}}]
+        if self.on_page is not None:
+            self.on_page(q["tableName"], page)
+        return 200, payload
+
+    def insert_row(self, table_id: str, row: dict) -> dict:
+        """A row uploaded meanwhile, with a lower id than every other row."""
+        with self.lock:
+            rows = self.data_tables[table_id]["rows"]
+            row = {"id": min((r["id"] for r in rows), default=FIRST_ROW_ID) - 1, **row}
+            rows.append(row)
+        return row
 
     @property
     def url(self) -> str:

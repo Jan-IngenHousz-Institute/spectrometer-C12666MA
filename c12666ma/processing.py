@@ -1,6 +1,9 @@
-"""Per-spectrometer processing of incoming frames: dark capture, rel. fluo.
-yield and recording. Runs in the device's serial reader thread, so every
-frame is processed and recorded even when the GUI redraws slower."""
+"""Per-spectrometer dark capture and frame processing.
+
+Runs in the device's serial reader thread, so every frame is processed and
+recorded even when the GUI redraws slower. AcquisitionSession combines
+synchronized frames from the assigned devices for the relative fluorescence.
+"""
 
 from __future__ import annotations
 

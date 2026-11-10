@@ -15,6 +15,7 @@ the answers for the next run.
 - [Leaving it running for days](#leaving-it-running-for-days)
 - [Stopping, and finishing the uploads](#stopping-and-finishing-the-uploads)
 - [What is saved](#what-is-saved)
+- [Downloading the data from openJII](#downloading-the-data-from-openjii)
 - [Starting without questions](#starting-without-questions)
 - [Troubleshooting](#troubleshooting)
 
@@ -229,6 +230,58 @@ Each spectrum is one row in the experiment's upload table, by default
 
 Dark rows hold `counts_mean` and `counts_std` instead of `counts`, plus the
 number of frames averaged in `n_frames`.
+
+## Downloading the data from openJII
+
+`python -m c12666ma.download` saves everything in an experiment, every table
+of its *Data* page, into one JSON file. It signs in with the same API key as
+the recorder.
+
+```
+python -m c12666ma.download --experiment "https://openjii.org/en-US/platform/experiments/5db72a32-1c50-4d81-b12c-0352cc65b5e6/data"
+```
+
+Without `--experiment` it lists your experiments, as the recorder does. It then
+asks where to save the file; the default is the recording folder, with the name
+`<experiment>_openjii_<date>_<time>.json`. The tables are read 1000 rows at a
+time, which takes a few seconds per 1000 rows.
+
+The file holds every table with its columns and rows:
+
+```
+{"experiment": {"id": "5db72a32-...", "name": "spectrometer-Kjell", "url": "https://openjii.org/..."},
+ "environment": "prod", "downloaded_at": "2026-11-03T15:31:03+01:00",
+ "tables": [{"name": "c12666ma_spectra", "identifier": "7f0a8fe9-...", "type": "upload",
+             "columns": [{"name": "id", "type": "BIGINT"}, ...],
+             "rows": [{"id": 1875292446259447, "kind": "spectrum", "counts": [309.0, ...], ...}, ...],
+             "row_count": 422},
+            ...]}
+```
+
+A row has the columns listed under [On openJII](#on-openjii), plus four that
+the platform adds: `id`, `uploaded_at`, `contributor` and `annotations`.
+Numbers, true/false values and lists keep their types; timestamps are text.
+The rows are not in time order. To load the spectra into pandas:
+
+```python
+import json
+import pandas as pd
+
+doc = json.load(open(path))
+spectra = next(t for t in doc["tables"] if t["name"] == "c12666ma_spectra")
+df = pd.DataFrame(spectra["rows"]).sort_values("timestamp_utc")
+```
+
+| Flag | Meaning |
+|---|---|
+| `--experiment` | experiment link, ID or exact name |
+| `--table NAME` | only this table (its name on the Data page); repeat for several. Default: all tables |
+| `-o`, `--output` | the file to write, or a folder for it |
+| `--yes` | ask nothing; needs a stored API key |
+| `--env dev` | use the openJII development platform |
+
+`python -m c12666ma.download login` enters a new API key, like
+`python -m c12666ma.record login`.
 
 ## Starting without questions
 
