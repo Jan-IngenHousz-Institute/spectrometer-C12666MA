@@ -27,9 +27,11 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 from . import __version__, simulator
-from .analysis import SATURATION_HIGH_GAIN, SATURATION_LOW_GAIN, Region, YieldStatus
+from .analysis import (SATURATION_HIGH_GAIN, SATURATION_LOW_GAIN, Region, YieldStatus,
+                       compute_cross_scanner_yield)
 from .device import DeviceError
 from .processing import AnalysisSettings
+from .protocol import Frame
 from .session import AcquisitionSession, DeviceHandle
 
 INCIDENT_COLOR = (70, 140, 255)
@@ -38,7 +40,7 @@ DEVICE_COLORS = [(235, 235, 235), (255, 170, 0), (80, 200, 255), (120, 220, 120)
                  (230, 100, 200), (255, 235, 90), (170, 140, 255), (255, 130, 130)]
 WARN_STYLE = "background:#b3261e; color:white; padding:3px 8px; border-radius:3px;"
 INFO_STYLE = "background:#8a6d00; color:white; padding:3px 8px; border-radius:3px;"
-MAX_PLOT_POINTS = 300_000        # per device in the yield plot; older points thinned
+MAX_PLOT_POINTS = 300_000        # cross-scanner yield points; older points thinned
 SPECTRUM_HISTORY = 5000          # spectra per device kept for the 3D view
 
 
@@ -106,13 +108,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session = session
         self.setWindowTitle(f"C12666MA Spectrometer {__version__}")
         self.settings = QtCore.QSettings("JII", "C12666MA")
-        self.yield_series: dict[str, GrowingSeries] = {}
         self.spec_curves: dict[str, pg.PlotDataItem] = {}
-        self.yield_curves: dict[str, pg.PlotDataItem] = {}
+        self.cross_yield_series = GrowingSeries()
         self.warn_series = GrowingSeries()
         self.sat_series = GrowingSeries()
         self.t0: Optional[float] = None
         self.latest: dict[str, tuple] = {}             # uid -> (frame, result)
+        self._preferred_top_uid: Optional[str] = None
+        self._preferred_bottom_uid: Optional[str] = None
+        self._active_pair_uids: tuple[Optional[str], Optional[str]] = (None, None)
+        self._last_cross_seq: Optional[int] = None
         self.spectrum_history: dict[str, collections.deque] = {}   # uid -> (t, frame)
         self._next_3d_update = 0.0
         self._rates: dict[str, float] = {}
@@ -317,11 +322,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.yield_plot.getAxis("left").enableAutoSIPrefix(False)
         self.yield_plot.setClipToView(True)
         self.yield_plot.setDownsampling(auto=True, mode="peak")
+        self.cross_yield_curve = self.yield_plot.plot(
+            pen=pg.mkPen((100, 220, 150), width=1.5), connect="finite",
+            name="bottom fluorescence / top incident_light")
         self.warn_scatter = self.yield_plot.plot(pen=None, symbol="x", symbolSize=8,
                                                  symbolBrush=FLUO_COLOR, symbolPen=FLUO_COLOR)
         self.sat_scatter = self.yield_plot.plot(pen=None, symbol="o", symbolSize=5,
                                                 symbolBrush=(255, 170, 0), symbolPen=None)
+        scanner_roles = QtWidgets.QHBoxLayout()
+        scanner_roles.addWidget(QtWidgets.QLabel("Top scanner (incident):"))
+        self.top_scanner_combo = QtWidgets.QComboBox()
+        scanner_roles.addWidget(self.top_scanner_combo)
+        scanner_roles.addWidget(QtWidgets.QLabel("Bottom scanner (fluorescence):"))
+        self.bottom_scanner_combo = QtWidgets.QComboBox()
+        scanner_roles.addWidget(self.bottom_scanner_combo)
+        scanner_roles.addStretch(1)
         tools = QtWidgets.QHBoxLayout()
+        tools.addWidget(self.bottom_scanner_combo)
         tools.addWidget(QtWidgets.QLabel("Show last"))
         self.window_spin = _spin(0, 30 * 86_400, 120, 0, 10, " s")
         self.window_spin.setSpecialValueText("all")
@@ -338,6 +355,7 @@ class MainWindow(QtWidgets.QMainWindow):
         bottom = QtWidgets.QWidget()
         bl = QtWidgets.QVBoxLayout(bottom)
         bl.setContentsMargins(0, 0, 0, 0)
+        bl.addLayout(scanner_roles)
         bl.addWidget(self.yield_plot)
         bl.addLayout(tools)
 
@@ -371,6 +389,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.detect_btn.clicked.connect(self.connect_all)
         self.remove_btn.clicked.connect(self.disconnect_selected)
         self.table.itemSelectionChanged.connect(self._selection_changed)
+        self.top_scanner_combo.currentIndexChanged.connect(self._scanner_roles_changed)
+        self.bottom_scanner_combo.currentIndexChanged.connect(self._scanner_roles_changed)
         self.name_edit.editingFinished.connect(self._send_name)
         self.gain_box.currentIndexChanged.connect(
             lambda: self._apply_selected(high_gain=self.gain_box.currentIndex() == 0))
@@ -462,6 +482,10 @@ class MainWindow(QtWidgets.QMainWindow):
             value = self.settings.value(name)
             if value is not None:
                 getattr(self, name).setChecked(str(value) == "true")
+        top_uid = self.settings.value("top_scanner_uid")
+        bottom_uid = self.settings.value("bottom_scanner_uid")
+        self._preferred_top_uid = str(top_uid) if top_uid else None
+        self._preferred_bottom_uid = str(bottom_uid) if bottom_uid else None
         geometry = self.settings.value("geometry")
         if isinstance(geometry, QtCore.QByteArray):
             self.restoreGeometry(geometry)
@@ -473,6 +497,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.settings.setValue(name, getattr(self, name).text())
         for name in self._PERSIST_CHECK:
             self.settings.setValue(name, "true" if getattr(self, name).isChecked() else "false")
+        self.settings.setValue("top_scanner_uid", self.top_scanner_combo.currentData() or "")
+        self.settings.setValue("bottom_scanner_uid", self.bottom_scanner_combo.currentData() or "")
         self.settings.setValue("geometry", self.saveGeometry())
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
@@ -535,10 +561,6 @@ class MainWindow(QtWidgets.QMainWindow):
         curve = self.spec_curves.pop(uid, None)
         if curve is not None:
             self.spec_plot.removeItem(curve)            # also removes the legend entry
-        curve = self.yield_curves.pop(uid, None)
-        if curve is not None:
-            self.yield_plot.removeItem(curve)
-        self.yield_series.pop(uid, None)
         self.latest.pop(uid, None)
         self.spectrum_history.pop(uid, None)
 
@@ -578,7 +600,41 @@ class MainWindow(QtWidgets.QMainWindow):
             self.table.selectRow(self._table_uids.index(self._selected))
         self.table.blockSignals(False)
         self._update_table()
+        self._refresh_scanner_selectors()
         self._show_selected()
+
+    def _refresh_scanner_selectors(self) -> None:
+        for combo, preferred in (
+                (self.top_scanner_combo, self._preferred_top_uid),
+                (self.bottom_scanner_combo, self._preferred_bottom_uid)):
+            current = combo.currentData()
+            selected = current or preferred
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("Select scanner", None)
+            for h in self.session.handles:
+                combo.addItem(f"{h.name} ({h.uid})", h.uid)
+            index = combo.findData(selected) if selected else -1
+            combo.setCurrentIndex(index if index >= 0 else 0)
+            combo.blockSignals(False)
+        self._scanner_roles_changed()
+
+    def _scanner_roles_changed(self) -> None:
+        top_uid = self.top_scanner_combo.currentData()
+        bottom_uid = self.bottom_scanner_combo.currentData()
+        self._preferred_top_uid = top_uid
+        self._preferred_bottom_uid = bottom_uid
+        pair = (top_uid, bottom_uid)
+        if pair != self._active_pair_uids:
+            self._active_pair_uids = pair
+            self.cross_yield_series.clear()
+            self.warn_series.clear()
+            self.sat_series.clear()
+            self._last_cross_seq = None
+            self.cross_yield_curve.setData([], [])
+            self.warn_scatter.setData([], [])
+            self.sat_scatter.setData([], [])
+        self._update_value_label(time.monotonic())
 
     def _update_table(self) -> None:
         for r, uid in enumerate(self._table_uids):
@@ -649,6 +705,9 @@ class MainWindow(QtWidgets.QMainWindow):
         warn = " ⚠ not calibrated for this unit" if cal.approximate else ""
         self.device_info.setText(f"{st['fw']}, uid {h.uid}\nwavelengths: {cal.source}{warn}")
         self.device_info.setStyleSheet("color:#e0a000" if cal.approximate else "")
+        latest = self.latest.get(h.uid)
+        if latest is not None:
+            self._update_saturation_line(h, latest[0])
 
     def _apply_selected(self, **kw) -> None:
         h = self.selected
@@ -830,19 +889,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ============================================================= refresh
     def _clear_yield(self) -> None:
-        for s in list(self.yield_series.values()) + [self.warn_series, self.sat_series]:
+        for s in (self.cross_yield_series, self.warn_series, self.sat_series):
             s.clear()
         for curve in self.yield_curves.values():
             curve.setData([], [])
         self.t0 = None
+        self._last_cross_seq = None
+        self.cross_yield_curve.setData([], [])
+        self.warn_scatter.setData([], [])
+        self.sat_scatter.setData([], [])
 
     def _curves_for(self, h: DeviceHandle):
         if h.uid not in self.spec_curves:
             pen = pg.mkPen(device_color(h), width=1.5)
             self.spec_curves[h.uid] = self.spec_plot.plot(pen=pen, name=h.name)
-            self.yield_curves[h.uid] = self.yield_plot.plot(pen=pen, connect="finite")
-            self.yield_series[h.uid] = GrowingSeries()
-        return self.spec_curves[h.uid], self.yield_curves[h.uid], self.yield_series[h.uid]
+        return self.spec_curves[h.uid]
 
     def _tick(self) -> None:
         results = self.session.results
@@ -881,7 +942,7 @@ class MainWindow(QtWidgets.QMainWindow):
             h = self._handle(uid)
             if h is None:
                 continue
-            frame, res = self.latest[uid]
+            frame, _ = self.latest[uid]
             dark = h.processor.dark
             y = frame.counts
             if self.subtract_check.isChecked() and dark is not None and dark.matches(frame):
@@ -893,7 +954,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sat_scatter.setData(self.sat_series.x, self.sat_series.y)
             self._update_value_label(now)
             window = self.window_spin.value()
-            last = max((s.x[-1] for s in self.yield_series.values() if s.n), default=0.0)
+            last = self.cross_yield_series.x[-1] if self.cross_yield_series.n else 0.0
             if window > 0:
                 self.yield_plot.setXRange(max(0.0, last - window), max(window, last), padding=0)
             else:
@@ -902,6 +963,36 @@ class MainWindow(QtWidgets.QMainWindow):
                 and self.auto_3d_check.isChecked() and now >= self._next_3d_update):
             self._update_3d_plot()
         self._update_warning(now)
+
+    def _update_cross_yield(self, now: float, changed: set[str]) -> None:
+        top_uid = self.top_scanner_combo.currentData()
+        bottom_uid = self.bottom_scanner_combo.currentData()
+        if (not top_uid or not bottom_uid or top_uid == bottom_uid
+                or not ({top_uid, bottom_uid} & changed)):
+            return
+        top = self.latest.get(top_uid)
+        bottom = self.latest.get(bottom_uid)
+        if top is None or bottom is None or top[0].seq != bottom[0].seq:
+            return
+        top_frame, top_result = top
+        _, bottom_result = bottom
+        if top_frame.seq == self._last_cross_seq:
+            return
+        result = compute_cross_scanner_yield(top_result, bottom_result,
+                                             self.session.analysis.k)
+        self._last_cross_seq = top_frame.seq
+        t = top_frame.timestamp - (self.t0 or top_frame.timestamp)
+        self.cross_yield_series.append(t, result.value)
+        if result.warning:
+            self.warn_series.append(t, 0.0)
+            self._last_warning = (
+                "Bottom scanner fluorescence signal without top scanner incident light",
+                now, WARN_STYLE)
+        if result.saturated:
+            self.sat_series.append(t, result.value if np.isfinite(result.value) else 0.0)
+            self._last_warning = (
+                "Saturated pixels in a scanner region; lower integration time or use low gain",
+                now, WARN_STYLE)
 
     def _refresh_3d_if_visible(self) -> None:
         if self.plot_tabs.currentIndex() == 1:
