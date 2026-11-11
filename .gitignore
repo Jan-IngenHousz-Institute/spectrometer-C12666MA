@@ -1,5 +1,6 @@
 # measurement data and recordings live on Teams/OneDrive or openJII, not in git
 data/*
+notebooks/data/
 LR1B/*
 .Old/
 .First try VSCode
@@ -33,3 +34,5 @@ _autosave-*
 Thumbs.db
 desktop.ini
 .DS_Store
+
+.*
