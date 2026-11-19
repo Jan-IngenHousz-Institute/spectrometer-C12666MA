@@ -5,6 +5,9 @@ LR1B/*
 .First try VSCode
 LR1B/*
 c12666ma/__pycache__
+*.png
+3 day time series
+3 day experiment results
 
 # Python caches and build output
 __pycache__/
